@@ -102,8 +102,15 @@ openenv validate
 The Docker image no longer depends on `ghcr.io/meta-pytorch/openenv-base:latest`, which removes the TLS handshake failure from the original build path.
 
 ```bash
+# Run from repo root
 docker build -t python-code-review-env -f server/Dockerfile .
 docker run --rm -p 8000:8000 python-code-review-env
+```
+
+If you run the build from inside `server/`, you must point the context at the repo root:
+
+```bash
+docker build -t python-code-review-env -f Dockerfile ..
 ```
 
 Expected health check:

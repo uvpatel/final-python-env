@@ -1,0 +1,16 @@
+**
+!.dockerignore
+!README.md
+!__init__.py
+!client.py
+!compat.py
+!inference.py
+!models.py
+!openenv.yaml
+!pyproject.toml
+!server/
+!server/**
+!tasks/
+!tasks/**
+!graders/
+!graders/**

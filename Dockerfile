@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md openenv.yaml __init__.py client.py models.py inference.py /app/
+COPY pyproject.toml README.md openenv.yaml __init__.py client.py compat.py models.py inference.py /app/
 COPY server /app/server
 COPY tasks /app/tasks
 COPY graders /app/graders
