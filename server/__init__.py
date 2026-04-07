@@ -1,11 +1,6 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
+"""Server exports for python_code_review_env."""
 
-"""Python Env environment server components."""
+from .app import app
+from .env import PythonCodeReviewEnvironment
 
-from .python_env_environment import PythonEnvironment
-
-__all__ = ["PythonEnvironment"]
+__all__ = ["app", "PythonCodeReviewEnvironment"]

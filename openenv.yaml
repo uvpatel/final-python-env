@@ -1,7 +1,6 @@
 spec_version: 1
-name: python_env
+name: python_code_review_env
 type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
-
