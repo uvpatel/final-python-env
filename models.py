@@ -20,13 +20,13 @@ class HistoryEntry(BaseModel):
     step: int = Field(..., ge=0)
     action_type: ActionType
     status: str = Field(..., description="Short outcome summary.")
-    reward: float = Field(..., description="Reward returned for the step.")
+    reward: float = Field(..., gt=0.0, lt=1.0, description="Reward returned for the step.")
 
 
 class RewardDetails(BaseModel):
     """Transparent reward decomposition for debugging and training."""
 
-    value: float = Field(..., description="Clamped net reward in [-1.0, 1.0].")
+    value: float = Field(..., gt=0.0, lt=1.0, description="Clamped net reward in (0.0, 1.0).")
     syntax_reward: float = Field(default=0.0)
     test_reward: float = Field(default=0.0)
     correctness_bonus: float = Field(default=0.0)
@@ -37,8 +37,8 @@ class RewardDetails(BaseModel):
     regression_penalty: float = Field(default=0.0)
     stagnation_penalty: float = Field(default=0.0)
     reason: str = Field(..., description="Human-readable reward explanation.")
-    prev_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    curr_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    prev_score: float = Field(default=0.01, gt=0.0, lt=1.0)
+    curr_score: float = Field(default=0.01, gt=0.0, lt=1.0)
     code_changed: bool = Field(default=False)
 
 
@@ -67,9 +67,9 @@ class PythonCodeReviewObservation(Observation):
     history: List[HistoryEntry] = Field(default_factory=list)
     attempts_remaining: int = Field(..., ge=0)
     last_action_status: str = Field(default="")
-    score: float = Field(..., ge=0.0, le=1.0)
+    score: float = Field(..., gt=0.0, lt=1.0)
     reward_details: RewardDetails = Field(
-        default_factory=lambda: RewardDetails(value=0.0, reason="Environment reset.")
+        default_factory=lambda: RewardDetails(value=0.1, reason="Environment reset.")
     )
 
 
@@ -84,7 +84,7 @@ class PythonCodeReviewState(State):
     errors: str = Field(default="")
     test_results: str = Field(default="")
     history: List[HistoryEntry] = Field(default_factory=list)
-    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    score: float = Field(default=0.01, gt=0.0, lt=1.0)
     done: bool = Field(default=False)
 
 
@@ -117,12 +117,12 @@ class TaskSummary(BaseModel):
 class TaskGrade(BaseModel):
     """Deterministic grader output."""
 
-    score: float = Field(..., ge=0.0, le=1.0)
-    syntax_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    score: float = Field(..., gt=0.0, lt=1.0)
+    syntax_score: float = Field(default=0.01, gt=0.0, lt=1.0)
     tests_passed: int = Field(default=0, ge=0)
     tests_total: int = Field(default=0, ge=0)
-    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    runtime_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    quality_score: float = Field(default=0.01, gt=0.0, lt=1.0)
+    runtime_score: float = Field(default=0.01, gt=0.0, lt=1.0)
     timed_out: bool = Field(default=False)
     details: Dict[str, Any] = Field(default_factory=dict)
 

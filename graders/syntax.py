@@ -9,7 +9,16 @@ except ImportError:
     from models import TaskGrade
     from tasks.catalog import ReviewTask
 
-from .shared import base_grade, compile_code, execute_cases, quality_metrics, similarity_score, summarize_results
+from .shared import (
+    base_grade,
+    compile_code,
+    component_score,
+    execute_cases,
+    quality_metrics,
+    shaped_score,
+    similarity_score,
+    summarize_results,
+)
 
 
 def grade_syntax_task(task: ReviewTask, code: str, timeout_s: float = 2.0) -> TaskGrade:
@@ -24,16 +33,16 @@ def grade_syntax_task(task: ReviewTask, code: str, timeout_s: float = 2.0) -> Ta
     }
 
     if not compiled:
-        partial = round(min(0.7, similarity_score(code, task.reference_code) * 0.7), 3)
+        progress = 0.05 + 0.2 * similarity_score(code, task.reference_code)
         details["test_results"] = []
         details["test_summary"] = "Code does not compile yet."
         return base_grade(
-            score=partial,
-            syntax_score=0.0,
+            score=shaped_score(progress),
+            syntax_score=component_score(0.01),
             tests_passed=0,
             tests_total=len(task.public_cases) + len(task.hidden_cases),
-            quality_score=0.0,
-            runtime_score=0.0,
+            quality_score=component_score(0.01),
+            runtime_score=component_score(0.01),
             timed_out=False,
             details=details,
         )
@@ -43,26 +52,28 @@ def grade_syntax_task(task: ReviewTask, code: str, timeout_s: float = 2.0) -> Ta
     if result.get("timed_out"):
         details["test_results"] = []
         details["test_summary"] = result["error"]
+        progress = 0.2 + 0.25 * quality["score"]
         return base_grade(
-            score=0.8,
-            syntax_score=1.0,
+            score=shaped_score(progress),
+            syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
             quality_score=quality["score"],
-            runtime_score=0.0,
+            runtime_score=component_score(0.01),
             timed_out=True,
             details=details,
         )
     if "error" in result:
         details["test_results"] = []
         details["test_summary"] = result["error"]
+        progress = 0.18 + 0.2 * quality["score"]
         return base_grade(
-            score=1.0,
-            syntax_score=1.0,
+            score=shaped_score(progress),
+            syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
             quality_score=quality["score"],
-            runtime_score=0.0,
+            runtime_score=component_score(0.01),
             timed_out=False,
             details=details,
         )
@@ -70,13 +81,15 @@ def grade_syntax_task(task: ReviewTask, code: str, timeout_s: float = 2.0) -> Ta
     data = result["data"]
     details["test_results"] = data["results"]
     details["test_summary"] = summarize_results("Validation checks", data["results"])
+    pass_rate = data["passed"] / max(data["total"], 1)
+    progress = min(1.0, 0.15 + 0.75 * pass_rate + 0.1 * quality["score"])
     return base_grade(
-        score=1.0,
-        syntax_score=1.0,
+        score=shaped_score(progress),
+        syntax_score=component_score(0.95),
         tests_passed=data["passed"],
         tests_total=data["total"],
         quality_score=quality["score"],
-        runtime_score=0.0,
+        runtime_score=component_score(0.01),
         timed_out=False,
         details=details,
     )

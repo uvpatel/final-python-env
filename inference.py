@@ -49,6 +49,9 @@ DEFAULT_MODEL_NAME = "mock-model"
 API_TIMEOUT_SECONDS = 3.0
 API_RETRIES = 1
 API_RETRY_DELAY_SECONDS = 0.2
+MIN_SCORE = 0.01
+POOR_SCORE = 0.1
+MAX_SCORE = 0.99
 
 
 def safe_env(name: str, default: str = "") -> str:
@@ -61,14 +64,19 @@ def safe_env(name: str, default: str = "") -> str:
 
 
 def clamp_score(value: Any) -> float:
-    """Clamp numeric scores to the required 0..1 interval."""
+    """Clamp numeric scores to the required open interval (0, 1)."""
     try:
-        return max(0.0, min(1.0, float(value)))
+        numeric = float(value)
     except Exception:
-        return 0.0
+        return MIN_SCORE
+    if numeric != numeric or numeric in (float("inf"), float("-inf")):
+        return MIN_SCORE
+    numeric = max(MIN_SCORE, min(MAX_SCORE, numeric))
+    assert 0 < numeric < 1, f"Invalid score: {numeric}"
+    return numeric
 
 
-def safe_float(value: Any, default: float = 0.0) -> float:
+def safe_float(value: Any, default: float = POOR_SCORE) -> float:
     """Convert a value to float without raising."""
     try:
         return float(value)
@@ -163,7 +171,7 @@ def build_prompt(observation: Any) -> str:
         task_description = safe_text(safe_getattr(observation, "task_description", ""), "No task description.")
         errors = safe_text(safe_getattr(observation, "errors", ""), "none")
         tests = safe_text(safe_getattr(observation, "test_results", ""), "not available")
-        score = clamp_score(safe_getattr(observation, "score", 0.0))
+        score = clamp_score(safe_getattr(observation, "score", POOR_SCORE))
         current_code = safe_code(safe_getattr(observation, "current_code", ""), "")
         visible_tests = safe_getattr(observation, "visible_tests", [])
         if not isinstance(visible_tests, Iterable) or isinstance(visible_tests, (str, bytes)):
@@ -262,10 +270,10 @@ def observation_reward(observation: Any) -> float:
     """Extract the scalar step reward from an observation."""
     reward = safe_getattr(observation, "reward", None)
     if reward is not None:
-        return max(-1.0, min(1.0, safe_float(reward, 0.0)))
+        return clamp_score(safe_float(reward, POOR_SCORE))
     reward_details = safe_getattr(observation, "reward_details", None)
-    reward_value = safe_getattr(reward_details, "value", 0.0)
-    return max(-1.0, min(1.0, safe_float(reward_value, 0.0)))
+    reward_value = safe_getattr(reward_details, "value", POOR_SCORE)
+    return clamp_score(safe_float(reward_value, POOR_SCORE))
 
 
 def fallback_first_action(task_id: str) -> dict[str, Any]:
@@ -306,22 +314,22 @@ def run_task(task_id: str, client: Any | None, model: str) -> None:
     emit_start(task_id)
 
     if PythonCodeReviewEnvironment is None:
-        emit_step(1, 0.0)
-        emit_end(task_id, 0.0, 1)
+        emit_step(1, POOR_SCORE)
+        emit_end(task_id, POOR_SCORE, 1)
         return
 
     try:
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             env = PythonCodeReviewEnvironment(verbose=False)
     except Exception:
-        emit_step(1, 0.0)
-        emit_end(task_id, 0.0, 1)
+        emit_step(1, POOR_SCORE)
+        emit_end(task_id, POOR_SCORE, 1)
         return
 
     observation = safe_reset(env, task_id)
     if observation is None:
-        emit_step(1, 0.0)
-        emit_end(task_id, 0.0, 1)
+        emit_step(1, POOR_SCORE)
+        emit_end(task_id, POOR_SCORE, 1)
         return
 
     step_count = 0
@@ -347,14 +355,14 @@ def run_task(task_id: str, client: Any | None, model: str) -> None:
         next_observation = safe_step(env, make_action(action_payload))
         step_count += 1
         if next_observation is None:
-            emit_step(step_count, 0.0)
-            emit_end(task_id, clamp_score(safe_getattr(final_observation, "score", 0.0)), step_count)
+            emit_step(step_count, POOR_SCORE)
+            emit_end(task_id, clamp_score(safe_getattr(final_observation, "score", POOR_SCORE)), step_count)
             return
 
         final_observation = next_observation
         emit_step(step_count, observation_reward(final_observation))
 
-    emit_end(task_id, clamp_score(safe_getattr(final_observation, "score", 0.0)), step_count)
+    emit_end(task_id, clamp_score(safe_getattr(final_observation, "score", POOR_SCORE)), step_count)
 
 
 def main() -> int:
@@ -366,8 +374,8 @@ def main() -> int:
             run_task(task_id, client, model_name)
         except Exception:
             emit_start(task_id)
-            emit_step(1, 0.0)
-            emit_end(task_id, 0.0, 1)
+            emit_step(1, POOR_SCORE)
+            emit_end(task_id, POOR_SCORE, 1)
     return 0
 
 

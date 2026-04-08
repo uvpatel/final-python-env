@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import difflib
+import math
 import multiprocessing as mp
 import time
 import traceback
@@ -17,10 +18,71 @@ except ImportError:
     from tasks.catalog import CallCase, ReviewTask
 
 
+STRICT_SCORE_MIN = 0.01
+STRICT_SCORE_MAX = 0.99
+POOR_SCORE = 0.1
+NEAR_PERFECT_SCORE = 0.95
+
+
+def finite_float(value: Any, fallback: float = STRICT_SCORE_MIN) -> float:
+    """Convert a value into a finite float with a deterministic fallback."""
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if math.isnan(numeric) or math.isinf(numeric):
+        return fallback
+    return numeric
+
+
 def clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     """Clamp a floating-point value to a closed interval."""
 
-    return max(lower, min(upper, value))
+    numeric = finite_float(value, fallback=lower)
+    return max(lower, min(upper, numeric))
+
+
+def strict_score(value: Any, lower: float = STRICT_SCORE_MIN, upper: float = STRICT_SCORE_MAX) -> float:
+    """Clamp a score to the OpenEnv-safe open interval (0, 1)."""
+
+    score = max(lower, min(upper, finite_float(value, fallback=lower)))
+    score = round(score, 3)
+    assert 0 < score < 1, f"Invalid score: {score}"
+    return score
+
+
+def shaped_score(progress: Any, floor: float = POOR_SCORE, ceiling: float = NEAR_PERFECT_SCORE) -> float:
+    """Map progress in [0, 1] to a shaped score band within (0, 1)."""
+
+    bounded_progress = clamp(finite_float(progress, fallback=0.0))
+    score = floor + (ceiling - floor) * bounded_progress
+    score = max(STRICT_SCORE_MIN, min(score, STRICT_SCORE_MAX))
+    score = round(score, 3)
+    assert 0 < score < 1, f"Invalid score: {score}"
+    return score
+
+
+def score_from_checks(passed: int, total: int, floor: float = POOR_SCORE, ceiling: float = NEAR_PERFECT_SCORE) -> float:
+    """Convert discrete checks into a smoothly shaped score."""
+
+    return shaped_score(safe_ratio(passed, total), floor=floor, ceiling=ceiling)
+
+
+def safe_ratio(numerator: Any, denominator: Any) -> float:
+    """Return a stable ratio in [0, 1] that never raises or produces NaN."""
+
+    denom = int(finite_float(denominator, fallback=0.0))
+    if denom <= 0:
+        return 0.0
+    numer = finite_float(numerator, fallback=0.0)
+    return clamp(numer / denom)
+
+
+def component_score(value: Any) -> float:
+    """Normalize component scores such as syntax, quality, and runtime."""
+
+    return strict_score(value)
 
 
 def compile_code(code: str) -> tuple[bool, str]:
@@ -157,8 +219,8 @@ def quality_metrics(code: str, function_name: str) -> Dict[str, Any]:
     compiled, error = compile_code(code)
     if not compiled:
         return {
-            "score": 0.0,
-            "style_score": 0.0,
+            "score": component_score(STRICT_SCORE_MIN),
+            "style_score": component_score(STRICT_SCORE_MIN),
             "quality_notes": [error],
             "max_loop_depth": 99,
         }
@@ -238,8 +300,8 @@ def quality_metrics(code: str, function_name: str) -> Dict[str, Any]:
         score += 0.15
 
     return {
-        "score": round(clamp(score), 3),
-        "style_score": round(clamp(style_score), 3),
+        "score": component_score(clamp(score)),
+        "style_score": component_score(clamp(style_score)),
         "quality_notes": notes,
         "max_loop_depth": max_loop_depth,
     }
@@ -294,7 +356,7 @@ def benchmark_candidate(task: ReviewTask, code: str, timeout_s: float) -> Dict[s
     """Benchmark a candidate solution against the starter implementation."""
 
     if not task.benchmark_config:
-        return {"runtime_score": 0.0, "details": "No benchmark configured."}
+        return {"runtime_score": component_score(STRICT_SCORE_MIN), "details": "No benchmark configured."}
 
     events = build_benchmark_events(task.benchmark_config)
     payload = {
@@ -306,15 +368,15 @@ def benchmark_candidate(task: ReviewTask, code: str, timeout_s: float) -> Dict[s
     }
     result = run_with_timeout(_benchmark_worker, payload, timeout_s=timeout_s)
     if result.get("timed_out"):
-        return {"runtime_score": 0.0, "timed_out": True, "details": result["error"]}
+        return {"runtime_score": component_score(STRICT_SCORE_MIN), "timed_out": True, "details": result["error"]}
     if "error" in result:
-        return {"runtime_score": 0.0, "timed_out": False, "details": result["error"]}
+        return {"runtime_score": component_score(STRICT_SCORE_MIN), "timed_out": False, "details": result["error"]}
 
     data = result["data"]
     baseline_seconds = float(data["baseline_seconds"])
     candidate_seconds = float(data["candidate_seconds"])
     improvement_ratio = baseline_seconds / max(candidate_seconds, 1e-9)
-    runtime_score = round(clamp((improvement_ratio - 1.0) / 1.5), 3)
+    runtime_score = component_score(clamp((improvement_ratio - 1.0) / 1.5))
     return {
         "runtime_score": runtime_score,
         "timed_out": False,
@@ -352,13 +414,18 @@ def base_grade(
 ) -> TaskGrade:
     """Create a normalized TaskGrade payload."""
 
+    safe_score = strict_score(score)
+    safe_syntax_score = component_score(syntax_score)
+    safe_quality_score = component_score(quality_score)
+    safe_runtime_score = component_score(runtime_score)
+
     return TaskGrade(
-        score=round(clamp(score), 3),
-        syntax_score=round(clamp(syntax_score), 3),
+        score=safe_score,
+        syntax_score=safe_syntax_score,
         tests_passed=tests_passed,
         tests_total=tests_total,
-        quality_score=round(clamp(quality_score), 3),
-        runtime_score=round(clamp(runtime_score), 3),
+        quality_score=safe_quality_score,
+        runtime_score=safe_runtime_score,
         timed_out=timed_out,
         details=details,
     )

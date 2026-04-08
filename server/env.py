@@ -10,6 +10,7 @@ from openenv.core.env_server.types import EnvironmentMetadata
 
 try:
     from ..graders import grade_task
+    from ..graders.shared import component_score, safe_ratio, strict_score
     from ..models import (
         HistoryEntry,
         PythonCodeReviewAction,
@@ -21,6 +22,7 @@ try:
     from ..tasks import ReviewTask, list_tasks, select_task
 except ImportError:
     from graders import grade_task
+    from graders.shared import component_score, safe_ratio, strict_score
     from models import (
         HistoryEntry,
         PythonCodeReviewAction,
@@ -33,11 +35,18 @@ except ImportError:
 
 
 def _empty_grade() -> TaskGrade:
-    return TaskGrade(score=0.0, syntax_score=0.0, tests_passed=0, tests_total=0, quality_score=0.0, runtime_score=0.0)
+    return TaskGrade(
+        score=component_score(0.01),
+        syntax_score=component_score(0.01),
+        tests_passed=0,
+        tests_total=0,
+        quality_score=component_score(0.01),
+        runtime_score=component_score(0.01),
+    )
 
 
-def _clamp(value: float, lower: float = -1.0, upper: float = 1.0) -> float:
-    return max(lower, min(upper, value))
+def _reward_value(value: float) -> float:
+    return strict_score(value)
 
 
 class PythonCodeReviewEnvironment(
@@ -53,7 +62,7 @@ class PythonCodeReviewEnvironment(
         self._task: ReviewTask = list_tasks()[0]
         self._current_code: str = self._task.starter_code
         self._history: list[HistoryEntry] = []
-        self._last_reward = RewardDetails(value=0.0, reason="Environment initialized.")
+        self._last_reward = RewardDetails(value=0.1, reason="Environment initialized.")
         self._current_grade = _empty_grade()
         self._state = PythonCodeReviewState(episode_id=str(uuid4()), step_count=0)
         self.reset()
@@ -68,7 +77,7 @@ class PythonCodeReviewEnvironment(
         self._task = select_task(seed=seed, task_id=task_id)
         self._current_code = self._task.starter_code
         self._history = []
-        self._last_reward = RewardDetails(value=0.0, reason="Environment reset.")
+        self._last_reward = RewardDetails(value=0.1, reason="Environment reset.")
         self._current_grade = grade_task(self._task, self._current_code, include_hidden=False)
 
         self._state = PythonCodeReviewState(
@@ -117,7 +126,10 @@ class PythonCodeReviewEnvironment(
         **kwargs: Any,
     ) -> Tuple[PythonCodeReviewObservation, float, bool, Dict[str, Any]]:
         if self._state.done:
-            reward = RewardDetails(value=0.0, reason="Episode already finished. Call reset() to continue.")
+            reward = RewardDetails(
+                value=_reward_value(0.05 + 0.25 * self._current_grade.score),
+                reason="Episode already finished. Call reset() to continue.",
+            )
             observation = self._build_observation(
                 grade=self._current_grade,
                 status="Episode already finished.",
@@ -266,22 +278,24 @@ class PythonCodeReviewEnvironment(
     ) -> RewardDetails:
         prev_score = previous_grade.score
         curr_score = current_grade.score
-        prev_rate = previous_grade.tests_passed / max(previous_grade.tests_total, 1)
-        curr_rate = current_grade.tests_passed / max(current_grade.tests_total, 1)
+        prev_rate = safe_ratio(previous_grade.tests_passed, previous_grade.tests_total)
+        curr_rate = safe_ratio(current_grade.tests_passed, current_grade.tests_total)
 
-        syntax_reward = 0.2 if previous_grade.syntax_score < 1.0 and current_grade.syntax_score >= 1.0 else 0.0
-        test_reward = round(max(curr_rate - prev_rate, 0.0) * 0.3, 3)
-        progress_delta = round(max(curr_score - prev_score, 0.0) * 0.4, 3)
-        quality_bonus = round(max(current_grade.quality_score - previous_grade.quality_score, 0.0) * 0.1, 3)
-        correctness_bonus = 0.5 if final_submission and curr_score >= 0.999 and prev_score < 0.999 else 0.0
+        syntax_reward = 0.14 if previous_grade.syntax_score < 0.9 and current_grade.syntax_score >= 0.9 else 0.0
+        test_reward = round(max(curr_rate - prev_rate, 0.0) * 0.22, 3)
+        progress_delta = round(max(curr_score - prev_score, 0.0) * 0.35, 3)
+        quality_bonus = round(max(current_grade.quality_score - previous_grade.quality_score, 0.0) * 0.08, 3)
+        correctness_bonus = 0.12 if final_submission and curr_score >= 0.94 and prev_score < 0.94 else 0.0
 
-        invalid_action_penalty = 0.1 if invalid_action else 0.0
-        timeout_penalty = 0.2 if timed_out else 0.0
+        invalid_action_penalty = 0.12 if invalid_action else 0.0
+        timeout_penalty = 0.14 if timed_out else 0.0
         regression_penalty = round(max(prev_score - curr_score, 0.0) * 0.2, 3)
-        stagnation_penalty = 0.05 if action.action_type == "edit_code" and not code_changed else 0.0
+        stagnation_penalty = 0.06 if action.action_type == "edit_code" and not code_changed else 0.0
 
-        value = _clamp(
-            syntax_reward
+        raw_value = (
+            0.1
+            + 0.45 * curr_score
+            + syntax_reward
             + test_reward
             + progress_delta
             + quality_bonus
@@ -291,6 +305,7 @@ class PythonCodeReviewEnvironment(
             - regression_penalty
             - stagnation_penalty
         )
+        value = _reward_value(raw_value)
 
         reason_parts = []
         if syntax_reward:
@@ -315,7 +330,7 @@ class PythonCodeReviewEnvironment(
             reason_parts.append("no meaningful state change")
 
         return RewardDetails(
-            value=round(value, 3),
+            value=value,
             syntax_reward=syntax_reward,
             test_reward=test_reward,
             correctness_bonus=correctness_bonus,
@@ -365,7 +380,7 @@ class PythonCodeReviewEnvironment(
 
     def _submission_status(self, grade: TaskGrade) -> str:
         runtime_text = ""
-        if grade.runtime_score:
+        if isinstance(grade.details.get("benchmark"), dict):
             runtime_text = f" runtime {grade.runtime_score:.2f};"
         return (
             f"Submission graded with score {grade.score:.2f}; "
