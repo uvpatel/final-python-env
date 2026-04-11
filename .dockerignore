@@ -8,6 +8,10 @@
 !models.py
 !openenv.yaml
 !pyproject.toml
+!DEMO_SCRIPT.md
+!triage.py
+!triage_catalog.py
+!triage_models.py
 !server/
 !server/**
 !tasks/

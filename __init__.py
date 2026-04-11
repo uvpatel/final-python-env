@@ -9,6 +9,8 @@ from .models import (
     PythonObservation,
     PythonState,
 )
+from .triage import CodeTriageEngine, HashingEmbeddingBackend, TransformersEmbeddingBackend, get_default_engine
+from .triage_models import TriageResult
 
 __all__ = [
     "PythonAction",
@@ -19,4 +21,9 @@ __all__ = [
     "PythonCodeReviewState",
     "PythonCodeReviewEnv",
     "PythonEnv",
+    "CodeTriageEngine",
+    "HashingEmbeddingBackend",
+    "TransformersEmbeddingBackend",
+    "TriageResult",
+    "get_default_engine",
 ]

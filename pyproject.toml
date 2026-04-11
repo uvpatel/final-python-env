@@ -5,14 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openenv-python-code-review-env"
 version = "1.0.0"
-description = "Production-grade OpenEnv environment for Python code review workflows."
+description = "TorchReview Copilot: AI-powered Python code triage with PyTorch and OpenEnv validation."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
+    "gradio>=5.26.0",
     "openai>=1.76.0",
     "openenv-core[core]>=0.2.2",
     "pytest>=8.0.0",
+    "torch>=2.2.0",
+    "transformers>=4.45.0",
     "uvicorn>=0.30.0",
 ]
 
