@@ -11,10 +11,10 @@ import traceback
 from typing import Any, Callable, Dict, List
 
 try:
-    from ..models import TaskGrade
+    from ..openenv_models import TaskGrade
     from ..tasks.catalog import CallCase, ReviewTask
 except ImportError:
-    from models import TaskGrade
+    from openenv_models import TaskGrade
     from tasks.catalog import CallCase, ReviewTask
 
 

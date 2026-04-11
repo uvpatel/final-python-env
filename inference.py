@@ -28,7 +28,7 @@ except Exception:
     PythonCodeReviewEnvironment = None  # type: ignore[assignment]
 
 try:
-    from models import PythonCodeReviewAction
+    from openenv_models import PythonCodeReviewAction
 except Exception:
     PythonCodeReviewAction = None  # type: ignore[assignment]
 

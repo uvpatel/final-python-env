@@ -11,7 +11,7 @@ from openenv.core.env_server.types import EnvironmentMetadata
 try:
     from ..graders import grade_task
     from ..graders.shared import component_score, safe_ratio, strict_score
-    from ..models import (
+    from ..openenv_models import (
         HistoryEntry,
         PythonCodeReviewAction,
         PythonCodeReviewObservation,
@@ -23,7 +23,7 @@ try:
 except ImportError:
     from graders import grade_task
     from graders.shared import component_score, safe_ratio, strict_score
-    from models import (
+    from openenv_models import (
         HistoryEntry,
         PythonCodeReviewAction,
         PythonCodeReviewObservation,
