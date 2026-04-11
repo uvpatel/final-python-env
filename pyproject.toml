@@ -14,6 +14,7 @@ dependencies = [
     "openai>=1.76.0",
     "openenv-core[core]>=0.2.2",
     "pytest>=8.0.0",
+    "streamlit>=1.44.0",
     "torch>=2.2.0",
     "transformers>=4.45.0",
     "uvicorn>=0.30.0",
@@ -34,5 +35,12 @@ packages = [
     "python_env.server",
     "python_env.tasks",
     "python_env.graders",
+    "python_env.api",
+    "python_env.app",
+    "python_env.analyzers",
+    "python_env.models",
+    "python_env.schemas",
+    "python_env.services",
+    "python_env.utils",
 ]
-package-dir = { "python_env" = ".", "python_env.server" = "server", "python_env.tasks" = "tasks", "python_env.graders" = "graders" }
+package-dir = { "python_env" = ".", "python_env.server" = "server", "python_env.tasks" = "tasks", "python_env.graders" = "graders", "python_env.api" = "api", "python_env.app" = "app", "python_env.analyzers" = "analyzers", "python_env.models" = "models", "python_env.schemas" = "schemas", "python_env.services" = "services", "python_env.utils" = "utils" }

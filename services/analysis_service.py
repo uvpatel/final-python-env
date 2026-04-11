@@ -79,8 +79,18 @@ class AnalysisService:
             combined_scores[domain] = round((0.6 * model_score) + (0.4 * heuristic_score), 4)
 
         detected_domain = request.domain_hint if request.domain_hint != "auto" else max(combined_scores, key=combined_scores.get)
-        analyzer = self._analyzers.get(detected_domain, analyze_dsa_code if detected_domain == "dsa" else analyze_web_code)
-        domain_analysis = analyzer(request.code, parsed, complexity) if detected_domain in self._analyzers else DomainAnalysis(domain="general", domain_score=0.6, issues=[], suggestions=["Add stronger domain-specific context for deeper analysis."], highlights={})
+        analyzer = self._analyzers.get(detected_domain)
+        domain_analysis = (
+            analyzer(request.code, parsed, complexity)
+            if analyzer is not None
+            else DomainAnalysis(
+                domain="general",
+                domain_score=0.6,
+                issues=[],
+                suggestions=["Add stronger domain-specific context for deeper analysis."],
+                highlights={},
+            )
+        )
 
         lint_score = _lint_score(parsed)
         score_breakdown = self.reward_service.compute(
