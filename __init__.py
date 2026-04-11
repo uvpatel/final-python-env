@@ -1,6 +1,7 @@
 """Public package exports for python_code_review_env."""
 
 from .client import PythonCodeReviewEnv, PythonEnv
+from .models import PyTorchCodeAnalyzerModel
 from .openenv_models import (
     PythonAction,
     PythonCodeReviewAction,
@@ -9,6 +10,8 @@ from .openenv_models import (
     PythonObservation,
     PythonState,
 )
+from .schemas import AnalyzeCodeRequest, AnalyzeCodeResponse
+from .services import AnalysisService
 from .triage import CodeTriageEngine, HashingEmbeddingBackend, TransformersEmbeddingBackend, get_default_engine
 from .triage_models import TriageResult
 
@@ -21,8 +24,12 @@ __all__ = [
     "PythonCodeReviewState",
     "PythonCodeReviewEnv",
     "PythonEnv",
+    "AnalyzeCodeRequest",
+    "AnalyzeCodeResponse",
+    "AnalysisService",
     "CodeTriageEngine",
     "HashingEmbeddingBackend",
+    "PyTorchCodeAnalyzerModel",
     "TransformersEmbeddingBackend",
     "TriageResult",
     "get_default_engine",
