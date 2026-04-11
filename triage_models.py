@@ -41,6 +41,7 @@ class TriageExample(BaseModel):
     summary: str
     code: str
     traceback_text: str
+    context_window: str
     task_id: str
 
 
@@ -53,6 +54,7 @@ class TriagePrototype(BaseModel):
     summary: str
     reference_text: str
     starter_code: str
+    reference_code: str
     traceback_text: str
 
 
@@ -62,6 +64,10 @@ class TriageResult(BaseModel):
     issue_label: IssueLabel
     confidence_scores: Dict[str, float]
     repair_risk: RiskLevel
+    ml_quality_score: float = Field(..., ge=0.0, le=1.0)
+    lint_score: float = Field(..., ge=0.0, le=1.0)
+    complexity_penalty: float = Field(..., ge=0.0, le=1.0)
+    reward_score: float = Field(..., ge=0.0, le=1.0)
     summary: str
     matched_pattern: PrototypeMatch
     repair_plan: List[str]

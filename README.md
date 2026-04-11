@@ -1,6 +1,6 @@
 ---
 title: TorchReview Copilot
-emoji: torch
+emoji: 🧠
 colorFrom: orange
 colorTo: red
 sdk: docker
@@ -16,7 +16,7 @@ tags:
 
 # TorchReview Copilot
 
-TorchReview Copilot is an **AI-powered Python code triage system using PyTorch** to classify issue type, estimate repair risk, and generate an actionable remediation plan from broken code plus failure output.
+TorchReview Copilot is an **AI-powered code review and improvement system using PyTorch** to analyze Python code, predict quality, generate structured improvement suggestions, and compute an RL-ready reward score.
 
 It upgrades the original OpenEnv hackathon environment into a judge-friendly product demo: a polished Hugging Face Space on top, with the deterministic OpenEnv validation engine still preserved underneath.
 
@@ -35,13 +35,14 @@ That triage step is repetitive, error-prone, and often slows down the actual fix
 
 ## Solution
 
-TorchReview Copilot turns code plus traceback text into a practical triage report:
+TorchReview Copilot turns code, traceback text, and a short context window into a practical code-review report:
 
 - **Issue classification:** syntax, logic, or performance
-- **Repair risk:** low, medium, or high
+- **ML quality score:** predicted code quality from PyTorch embeddings
+- **Reward score:** RL-ready score from model quality, lint quality, and complexity penalty
 - **Live Triage Radar:** confidence visualization for all issue classes
 - **Nearest known pattern:** the closest OpenEnv task match
-- **Fix plan:** prioritized remediation steps for the engineer
+- **Improvement plan:** step 1 syntax/bug fixes, step 2 edge cases, step 3 scalability
 
 The result is a demo that feels like a real AI debugging assistant rather than a backend-only environment.
 
@@ -54,13 +55,13 @@ This project uses **PyTorch for real inference**, not placeholder branching:
 - embeddings are compared against curated OpenEnv issue prototypes
 - the final decision blends model similarity with lightweight static analysis signals
 
-That gives the demo an actual model-backed classification path while keeping it CPU-friendly for Hugging Face Spaces.
+That gives the demo an actual model-backed quality and issue scoring path while keeping it CPU-friendly for Hugging Face Spaces.
 
 ## How It Works
 
 ### Pipeline
 
-`Input code + traceback -> static checks -> PyTorch embeddings -> similarity against issue prototypes -> confidence scores -> repair plan`
+`Input code + context window + traceback -> static checks -> PyTorch embeddings -> quality + issue prediction -> suggestion engine -> reward computation -> UI/API output`
 
 ### Detailed Flow
 
@@ -68,16 +69,28 @@ That gives the demo an actual model-backed classification path while keeping it 
 2. TorchReview extracts lightweight static signals:
    - parser success/failure
    - assertion-style test language
-   - performance keywords
-   - nested-loop depth
+   - lint/style issues
+   - nested-loop depth and complexity pressure
 3. CodeBERTa runs through PyTorch to embed the combined input.
-4. The embedding is compared against built-in issue prototypes derived from the OpenEnv task catalog.
+4. The embedding is compared against built-in issue prototypes derived from the OpenEnv task catalog and reference implementations.
 5. The UI returns:
    - top issue label
    - confidence radar
    - repair risk
+   - ML quality score
+   - RL-ready reward score
    - nearest known bug pattern
-   - suggested next action
+   - three-step improvement plan
+
+### Reward Formula
+
+The current reward computation is:
+
+```text
+reward = (0.5 x ML_quality_score) + (0.3 x lint_score) - (0.2 x complexity_penalty)
+```
+
+This keeps the project compatible with OpenEnv-style reinforcement learning workflows.
 
 ## Built-In Demo Scenarios
 
@@ -98,6 +111,18 @@ These examples make the classification differences obvious during judging and vi
 - **OpenEnv** for deterministic validation endpoints and environment compatibility
 - **Pydantic** for typed schemas
 
+## Features
+
+- PyTorch-powered code quality inference
+- Static analysis for syntax, lint, and complexity
+- Context-window-aware review flow
+- RL-ready reward shaping
+- Live Triage Radar visualization
+- Three-step improvement plan:
+  1. syntax checking and bug fixes
+  2. edge-case handling
+  3. scalability improvements
+
 ## Hugging Face Space UX
 
 The root app now presents a production-style triage experience:
@@ -105,8 +130,10 @@ The root app now presents a production-style triage experience:
 - a clear problem/solution hero section
 - example scenario selector
 - code and traceback inputs
+- context window input
 - **Live Triage Radar**
-- structured fix plan
+- structured improvement plan
+- reward and quality score display
 - visible model/backend notes
 
 The underlying OpenEnv endpoints remain available for compatibility and evaluation.
@@ -209,7 +236,8 @@ Short version:
 3. Show the Live Triage Radar and issue label.
 4. Explain the PyTorch embedding step.
 5. Show the matched pattern and fix plan.
-6. Switch to the performance example to prove the model distinguishes issue classes.
+6. Show the reward score and explain how it can be used inside an RL environment.
+7. Switch to the performance example to prove the model distinguishes issue classes.
 
 ## Limitations
 

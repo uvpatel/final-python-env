@@ -189,7 +189,7 @@ def _default_outputs() -> tuple[str, str, str, str, str]:
     return (
         "<div class='metric-card'><div class='eyebrow'>Awaiting Analysis</div><p class='hero-copy'>Paste Python code, add an optional traceback, or load one of the built-in examples.</p></div>",
         "<div class='metric-card'><div class='eyebrow'>Live Triage Radar</div><p class='hero-copy'>Confidence bars will appear after the first analysis run.</p></div>",
-        "### Fix Plan\nAnalyze a sample to generate a prioritized remediation checklist.",
+        "### Improvement Plan\nAnalyze a sample to generate syntax, edge-case, and scalability recommendations.",
         "### Known Pattern Match\nThe nearest OpenEnv task will be highlighted here after inference runs.",
         "### Model Notes\nBackend and extracted signal details will appear here.",
     )
@@ -209,18 +209,30 @@ def _summary_html(result) -> str:
         <span class="pill {escape(result.repair_risk)}">{escape(result.repair_risk)} repair risk</span>
       </div>
       <p class="hero-copy">{summary}</p>
-      <div class="summary-grid">
+        <div class="summary-grid">
+        <div class="summary-stat">
+          <strong>Reward Score</strong>
+          {result.reward_score:.0%}
+        </div>
+        <div class="summary-stat">
+          <strong>ML Quality</strong>
+          {result.ml_quality_score:.0%}
+        </div>
         <div class="summary-stat">
           <strong>Matched Pattern</strong>
           {escape(result.matched_pattern.title)}
         </div>
         <div class="summary-stat">
-          <strong>Similarity</strong>
-          {result.matched_pattern.similarity:.0%}
-        </div>
-        <div class="summary-stat">
           <strong>Inference Backend</strong>
           {escape(result.model_backend)}
+        </div>
+        <div class="summary-stat">
+          <strong>Lint Score</strong>
+          {result.lint_score:.0%}
+        </div>
+        <div class="summary-stat">
+          <strong>Complexity Penalty</strong>
+          {result.complexity_penalty:.0%}
         </div>
         <div class="summary-stat">
           <strong>Next Action</strong>
@@ -264,7 +276,7 @@ def _radar_html(result) -> str:
 def _plan_markdown(result) -> str:
     plan_lines = "\n".join(f"{index + 1}. {step}" for index, step in enumerate(result.repair_plan))
     return (
-        "### Fix Plan\n"
+        "### Improvement Plan\n"
         f"**Primary issue:** `{result.issue_label}`\n\n"
         f"{plan_lines}\n\n"
         f"**Suggested next action:** {result.suggested_next_action}"
@@ -292,6 +304,9 @@ def _model_markdown(result) -> str:
         f"- **Model backend:** `{result.model_backend}`\n"
         f"- **Model id:** `{result.model_id}`\n"
         f"- **Analysis time:** `{result.analysis_time_ms:.2f} ms`\n\n"
+        "### Reward Formula\n"
+        f"- `reward = (0.5 x {result.ml_quality_score:.2f}) + (0.3 x {result.lint_score:.2f}) - (0.2 x {result.complexity_penalty:.2f})`\n"
+        f"- **Final reward:** `{result.reward_score:.2f}`\n\n"
         "### Extracted Signals\n"
         f"{signal_lines}\n\n"
         "### Backend Notes\n"
@@ -299,10 +314,10 @@ def _model_markdown(result) -> str:
     )
 
 
-def analyze_inputs(code: str, traceback_text: str) -> tuple[str, str, str, str, str]:
+def analyze_inputs(code: str, traceback_text: str, context_window: str) -> tuple[str, str, str, str, str]:
     """Run the triage engine and format outputs for the Gradio UI."""
 
-    result = get_default_engine().triage(code or "", traceback_text or "")
+    result = get_default_engine().triage(code or "", traceback_text or "", context_window or "")
     return (
         _summary_html(result),
         _radar_html(result),
@@ -312,18 +327,18 @@ def analyze_inputs(code: str, traceback_text: str) -> tuple[str, str, str, str, 
     )
 
 
-def load_example(example_key: str) -> tuple[str, str, str, str, str, str, str, str]:
+def load_example(example_key: str) -> tuple[str, str, str, str, str, str, str, str, str]:
     """Populate the UI from a built-in example and immediately analyze it."""
 
     example = get_default_engine().example_map()[example_key]
-    outputs = analyze_inputs(example.code, example.traceback_text)
+    outputs = analyze_inputs(example.code, example.traceback_text, example.context_window)
     header = (
         f"### Example Scenario\n"
         f"**{example.title}**  \n"
         f"{example.summary}  \n"
         f"Label target: `{example.label}`"
     )
-    return (example.code, example.traceback_text, header, *outputs)
+    return (example.code, example.traceback_text, example.context_window, header, *outputs)
 
 
 def build_demo() -> gr.Blocks:
@@ -339,8 +354,8 @@ def build_demo() -> gr.Blocks:
               <div class="eyebrow">Meta PyTorch OpenEnv Hackathon Demo</div>
               <h1 class="hero-title">TorchReview Copilot</h1>
               <p class="hero-copy">
-                AI-powered Python code triage using PyTorch to classify issue type, estimate repair risk,
-                and turn messy failure output into an actionable fix plan. OpenEnv stays underneath as the deterministic validation engine.
+                AI-powered code review and improvement system using PyTorch to score code quality, surface bugs,
+                and generate a three-step improvement plan. OpenEnv stays underneath as the deterministic validation engine.
               </p>
             </div>
             """
@@ -367,8 +382,14 @@ def build_demo() -> gr.Blocks:
                     label="Optional traceback / failing test output",
                     placeholder="Paste stack traces, assertion failures, or benchmark notes here.",
                 )
+                context_input = gr.Textbox(
+                    value=first_example.context_window,
+                    lines=4,
+                    label="Context window",
+                    placeholder="Describe expected behavior, constraints, or repository context.",
+                )
                 with gr.Row():
-                    analyze_button = gr.Button("Analyze With PyTorch", variant="primary")
+                    analyze_button = gr.Button("Analyze & Score Code", variant="primary")
                     clear_button = gr.Button("Clear Inputs", variant="secondary")
 
             with gr.Column(scale=5):
@@ -384,9 +405,9 @@ def build_demo() -> gr.Blocks:
               <div class="eyebrow">How It Works</div>
               <div class="how-grid">
                 <div class="how-step"><strong>Input</strong><br>Code plus optional traceback or benchmark signal.</div>
-                <div class="how-step"><strong>Processing</strong><br>Static checks extract parser, assertion, and runtime clues.</div>
-                <div class="how-step"><strong>Model</strong><br>CodeBERTa embeddings run through PyTorch and compare against known OpenEnv task patterns.</div>
-                <div class="how-step"><strong>Output</strong><br>Confidence radar, nearest known issue, repair risk, and a practical remediation plan.</div>
+                <div class="how-step"><strong>Processing</strong><br>Static checks extract parser, lint, complexity, and runtime clues.</div>
+                <div class="how-step"><strong>Model</strong><br>CodeBERTa embeddings run through PyTorch and score code quality against known OpenEnv patterns.</div>
+                <div class="how-step"><strong>Output</strong><br>Confidence radar, reward score, and a three-step improvement plan.</div>
               </div>
             </div>
             """
@@ -395,25 +416,25 @@ def build_demo() -> gr.Blocks:
         example_choice.change(
             fn=load_example,
             inputs=example_choice,
-            outputs=[code_input, traceback_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
+            outputs=[code_input, traceback_input, context_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
             show_progress="hidden",
         )
         analyze_button.click(
             fn=analyze_inputs,
-            inputs=[code_input, traceback_input],
+            inputs=[code_input, traceback_input, context_input],
             outputs=[summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
             show_progress="minimal",
         )
         clear_button.click(
-            fn=lambda: ("", "", "### Example Scenario\nChoose a built-in example or paste custom code.", *_default_outputs()),
+            fn=lambda: ("", "", "", "### Example Scenario\nChoose a built-in example or paste custom code.", *_default_outputs()),
             inputs=None,
-            outputs=[code_input, traceback_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
+            outputs=[code_input, traceback_input, context_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
             show_progress="hidden",
         )
         demo.load(
             fn=load_example,
             inputs=example_choice,
-            outputs=[code_input, traceback_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
+            outputs=[code_input, traceback_input, context_input, example_header, summary_html, radar_html, plan_markdown, match_markdown, model_markdown],
             show_progress="hidden",
         )
 

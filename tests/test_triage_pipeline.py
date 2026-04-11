@@ -20,18 +20,20 @@ def test_examples_map_to_expected_labels_with_fallback_backend() -> None:
     engine = CodeTriageEngine(backend=HashingEmbeddingBackend())
 
     for example in examples:
-        result = engine.triage(example.code, example.traceback_text)
+        result = engine.triage(example.code, example.traceback_text, example.context_window)
         assert result.issue_label == example.label
+        assert 0.0 <= result.reward_score <= 1.0
 
 
 def test_syntax_example_exposes_parser_signal() -> None:
     example = next(item for item in build_examples() if item.label == "syntax")
     engine = CodeTriageEngine(backend=HashingEmbeddingBackend())
 
-    result = engine.triage(example.code, example.traceback_text)
+    result = engine.triage(example.code, example.traceback_text, example.context_window)
 
     assert any(signal.name == "syntax_parse" and signal.value == "fails" for signal in result.extracted_signals)
     assert result.matched_pattern.task_id == example.task_id
+    assert result.repair_plan[0].startswith("Step 1 - Syntax checking and bug fixes")
 
 
 def test_composed_app_preserves_health_route() -> None:

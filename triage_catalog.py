@@ -44,6 +44,21 @@ SUMMARY_BY_TASK_ID: Dict[str, str] = {
     "optimization_rank_active_users": "A nightly ranking job is correct on small fixtures but too slow at production scale.",
 }
 
+CONTEXT_BY_TASK_ID: Dict[str, str] = {
+    "syntax_fix_invoice_totals": (
+        "Context window: this helper runs in an end-of-day billing reconciliation job. "
+        "Keep the public function signature intact and restore correct totals for mixed integer/string inputs."
+    ),
+    "bug_fix_session_windows": (
+        "Context window: this function groups sorted product analytics events into sessions for retention dashboards. "
+        "Boundary behavior must stay deterministic because downstream reports depend on it."
+    ),
+    "optimization_rank_active_users": (
+        "Context window: this pipeline feeds a nightly export on a small CPU instance. "
+        "Maintain identical output ordering while improving scalability on larger event volumes."
+    ),
+}
+
 
 def _prototype_text(
     task_id: str,
@@ -82,6 +97,7 @@ def build_examples() -> List[TriageExample]:
                 summary=SUMMARY_BY_TASK_ID[task.task_id],
                 code=task.starter_code,
                 traceback_text=TRACEBACK_BY_TASK_ID[task.task_id],
+                context_window=CONTEXT_BY_TASK_ID[task.task_id],
                 task_id=task.task_id,
             )
         )
@@ -111,6 +127,7 @@ def build_prototypes() -> List[TriagePrototype]:
                     traceback_text,
                 ),
                 starter_code=task.starter_code,
+                reference_code=task.reference_code,
                 traceback_text=traceback_text,
             )
         )

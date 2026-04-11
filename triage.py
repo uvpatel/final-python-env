@@ -181,6 +181,43 @@ def _repair_risk(label: IssueLabel, confidence: float, signal_count: int) -> str
     return "high"
 
 
+def _clamp_unit(value: float) -> float:
+    return round(max(0.0, min(1.0, float(value))), 4)
+
+
+def _lint_score(code: str) -> float:
+    stripped_lines = [line.rstrip("\n") for line in code.splitlines()]
+    if not stripped_lines:
+        return 0.2
+
+    score = 1.0
+    if any(len(line) > 88 for line in stripped_lines):
+        score -= 0.15
+    if any(line.rstrip() != line for line in stripped_lines):
+        score -= 0.1
+    if any("\t" in line for line in stripped_lines):
+        score -= 0.1
+    try:
+        tree = ast.parse(code)
+        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+        if functions and not ast.get_docstring(functions[0]):
+            score -= 0.08
+    except SyntaxError:
+        score -= 0.45
+    return _clamp_unit(score)
+
+
+def _complexity_penalty(code: str) -> float:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return 0.95
+    branch_nodes = sum(isinstance(node, (ast.If, ast.For, ast.While, ast.Try, ast.Match)) for node in ast.walk(tree))
+    loop_depth = _loop_depth(code)
+    penalty = 0.1 + min(branch_nodes, 8) * 0.07 + min(loop_depth, 4) * 0.12
+    return _clamp_unit(penalty)
+
+
 class CodeTriageEngine:
     """Combine static signals with PyTorch embeddings to classify code issues."""
 
@@ -195,6 +232,7 @@ class CodeTriageEngine:
         self.prototypes = list(prototypes or build_prototypes())
         self.examples = list(examples or build_examples())
         self._prototype_matrix: torch.Tensor | None = None
+        self._reference_code_matrix: torch.Tensor | None = None
 
     def example_map(self) -> dict[str, TriageExample]:
         """Return UI examples keyed by task id."""
@@ -206,11 +244,24 @@ class CodeTriageEngine:
         snippet = _sanitize_text(code) or "# No code supplied."
         return f"Candidate code:\n{snippet}\n\nObserved failure:\n{trace}\n"
 
+    def _build_review_document(self, code: str, traceback_text: str, context_window: str) -> str:
+        context = _sanitize_text(context_window) or "No additional context window supplied."
+        return (
+            f"{self._build_document(code, traceback_text)}\n"
+            f"Context window:\n{context}\n"
+        )
+
     def _prototype_embeddings(self) -> torch.Tensor:
         if self._prototype_matrix is None:
             reference_texts = [prototype.reference_text for prototype in self.prototypes]
             self._prototype_matrix = self.backend.embed_texts(reference_texts)
         return self._prototype_matrix
+
+    def _reference_code_embeddings(self) -> torch.Tensor:
+        if self._reference_code_matrix is None:
+            reference_codes = [prototype.reference_code for prototype in self.prototypes]
+            self._reference_code_matrix = self.backend.embed_texts(reference_codes)
+        return self._reference_code_matrix
 
     def _extract_signals(self, code: str, traceback_text: str) -> tuple[list[TriageSignal], dict[IssueLabel, float], list[str]]:
         trace = (traceback_text or "").lower()
@@ -321,31 +372,37 @@ class CodeTriageEngine:
         best_similarity = float((similarities[best_index] + 1.0) / 2.0)
         return best_prototype, best_similarity, indexed_scores
 
-    def _repair_plan(self, label: IssueLabel, matched: TriagePrototype) -> list[str]:
-        plans = {
-            "syntax": [
-                "Patch the parser break first: missing colon, bracket, or indentation before changing logic.",
-                f"Realign the implementation with the known-good pattern from `{matched.title}`.",
-                "Re-run the visible checks once the file compiles, then verify hidden edge cases.",
-            ],
-            "logic": [
-                "Reproduce the failing assertion with the smallest public example and inspect state transitions.",
-                f"Compare boundary handling against the known issue pattern `{matched.title}`.",
-                "Patch the final state update or branch condition, then rerun correctness checks before submission.",
-            ],
-            "performance": [
-                "Profile the hot path and isolate repeated full-list scans or nested loops.",
-                f"Refactor toward counting or indexing strategies similar to `{matched.title}`.",
-                "Benchmark the new implementation on a production-like fixture and confirm output stability.",
-            ],
-        }
-        return plans[label]
+    def _repair_plan(self, label: IssueLabel, matched: TriagePrototype, context_window: str) -> list[str]:
+        context = _sanitize_text(context_window)
+        step_one = {
+            "syntax": "Step 1 - Syntax checking and bug fixes: resolve the parser break before touching behavior, then align the function with the expected contract.",
+            "logic": "Step 1 - Syntax checking and bug fixes: confirm the code parses cleanly, then patch the failing branch or state update causing the incorrect result.",
+            "performance": "Step 1 - Syntax checking and bug fixes: keep the implementation correct first, then isolate the slow section without changing external behavior.",
+        }[label]
+        step_two = (
+            "Step 2 - Edge case handling: verify empty input, boundary values, missing fields, and final-state flush behavior "
+            f"against the known pattern `{matched.title}`."
+        )
+        step_three = (
+            "Step 3 - Scalability of code: remove repeated full scans, prefer linear-time data structures, "
+            "and benchmark the path on a production-like fixture."
+        )
+        if context:
+            step_two = f"{step_two} Context window to preserve: {context}"
+        return [step_one, step_two, step_three]
 
-    def triage(self, code: str, traceback_text: str = "") -> TriageResult:
+    def _reference_quality_score(self, code: str, matched: TriagePrototype) -> float:
+        candidate = self.backend.embed_texts([_sanitize_text(code) or "# empty"])
+        match_index = next(index for index, prototype in enumerate(self.prototypes) if prototype.task_id == matched.task_id)
+        reference = self._reference_code_embeddings()[match_index : match_index + 1]
+        score = float(torch.matmul(candidate, reference.T)[0][0].item())
+        return _clamp_unit((score + 1.0) / 2.0)
+
+    def triage(self, code: str, traceback_text: str = "", context_window: str = "") -> TriageResult:
         """Run the full triage pipeline on code plus optional failure context."""
 
         started = time.perf_counter()
-        document = self._build_document(code, traceback_text)
+        document = self._build_review_document(code, traceback_text, context_window)
         signals, heuristic_scores, notes = self._extract_signals(code, traceback_text)
 
         candidate_embedding = self.backend.embed_texts([document])
@@ -367,9 +424,14 @@ class CodeTriageEngine:
         top_confidence = confidence_scores[issue_label]
 
         top_signal = signals[0].evidence if signals else "Model similarity dominated the decision."
+        ml_quality_score = self._reference_quality_score(code, matched)
+        lint_score = _lint_score(code)
+        complexity_penalty = _complexity_penalty(code)
+        reward_score = _clamp_unit((0.5 * ml_quality_score) + (0.3 * lint_score) - (0.2 * complexity_penalty))
         summary = (
             f"Detected a {issue_label} issue with {top_confidence:.0%} confidence. "
-            f"The closest known failure pattern is `{matched.title}`, which indicates {matched.summary.lower()}"
+            f"The closest known failure pattern is `{matched.title}`, which indicates {matched.summary.lower()}. "
+            f"Predicted quality score is {ml_quality_score:.0%} with an RL-ready reward of {reward_score:.0%}."
         )
         suggested_next_action = {
             "syntax": "Fix the parser error first, then rerun validation before changing behavior.",
@@ -381,6 +443,10 @@ class CodeTriageEngine:
             issue_label=issue_label,
             confidence_scores=confidence_scores,
             repair_risk=_repair_risk(issue_label, top_confidence, len(signals)),
+            ml_quality_score=ml_quality_score,
+            lint_score=lint_score,
+            complexity_penalty=complexity_penalty,
+            reward_score=reward_score,
             summary=summary,
             matched_pattern=PrototypeMatch(
                 task_id=matched.task_id,
@@ -390,7 +456,7 @@ class CodeTriageEngine:
                 summary=matched.summary,
                 rationale=top_signal,
             ),
-            repair_plan=self._repair_plan(issue_label, matched),
+            repair_plan=self._repair_plan(issue_label, matched, context_window),
             suggested_next_action=suggested_next_action,
             extracted_signals=signals,
             model_backend=self.backend.backend_name,
