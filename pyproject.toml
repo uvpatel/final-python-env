@@ -12,6 +12,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.111.0",
     "gradio>=5.26.0",
+    "hf-xet>=1.4.3",
     "openai>=1.76.0",
     "openenv-core[core]>=0.2.2",
     "streamlit>=1.44.0",
