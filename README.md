@@ -1,3 +1,13 @@
+---
+title: Python Code Review Environment Server
+sdk: docker
+app_port: 8000
+base_path: /web
+pinned: false
+tags:
+  - openenv
+---
+
 # OpenEnv Python Code Review Environment
 
 Production-ready hackathon submission for OpenEnv evaluation, deterministic validator runs, and Hugging Face Docker deployment.
@@ -78,6 +88,7 @@ Optional demo UI:
 
 ```bash
 set ENABLE_GRADIO_DEMO=true
+set ENABLE_WEB_INTERFACE=true
 python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -148,6 +159,7 @@ Recommended deployment steps:
    `HF_TOKEN`
 5. Set Space variables as needed:
    `API_BASE_URL`, `MODEL_NAME`, `ENABLE_GRADIO_DEMO=false`
+   `ENABLE_WEB_INTERFACE=false` is also supported for OpenEnv-managed deploys.
 6. Confirm the app listens on port `8000`.
 7. Smoke-test:
    `/health`

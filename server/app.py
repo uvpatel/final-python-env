@@ -27,7 +27,10 @@ except ImportError:
 
 
 def _gradio_enabled() -> bool:
-    return str(os.getenv("ENABLE_GRADIO_DEMO", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    for env_name in ("ENABLE_GRADIO_DEMO", "ENABLE_WEB_INTERFACE"):
+        if str(os.getenv(env_name, "")).strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+    return False
 
 
 def _max_concurrent_envs() -> int:
