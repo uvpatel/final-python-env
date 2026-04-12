@@ -8,6 +8,10 @@ from schemas.response import ScoreBreakdown
 class RewardService:
     """Compute reward scores from model, domain, lint, and complexity signals."""
 
+    @staticmethod
+    def _clamp_score(value: float) -> float:
+        return round(max(0.01, min(0.99, float(value))), 4)
+
     def compute(self, *, ml_score: float, domain_score: float, lint_score: float, complexity_penalty: float) -> ScoreBreakdown:
         """Apply dynamic reward shaping based on quality, errors, and completion."""
 
@@ -27,12 +31,12 @@ class RewardService:
             ),
         )
         return ScoreBreakdown(
-            ml_score=round(ml_score, 4),
-            domain_score=round(domain_score, 4),
-            lint_score=round(lint_score, 4),
-            complexity_penalty=round(complexity_penalty, 4),
-            quality_signal=round(quality_signal, 4),
-            error_reduction_signal=round(error_reduction_signal, 4),
-            completion_signal=round(completion_signal, 4),
-            reward=round(reward, 4),
+            ml_score=self._clamp_score(ml_score),
+            domain_score=self._clamp_score(domain_score),
+            lint_score=self._clamp_score(lint_score),
+            complexity_penalty=self._clamp_score(complexity_penalty),
+            quality_signal=self._clamp_score(quality_signal),
+            error_reduction_signal=self._clamp_score(error_reduction_signal),
+            completion_signal=self._clamp_score(completion_signal),
+            reward=self._clamp_score(reward),
         )

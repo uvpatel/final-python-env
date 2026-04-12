@@ -101,6 +101,10 @@ class PyTorchCodeAnalyzerModel:
             self.backend_name = self._fallback.backend_name
             self.notes = list(self._fallback.notes) + [f"Pretrained load failed: {type(exc).__name__}: {exc}"]
 
+    @staticmethod
+    def _clamp_score(value: float) -> float:
+        return round(max(0.01, min(0.99, float(value))), 4)
+
     def _embed_texts(self, texts: Sequence[str]) -> torch.Tensor:
         self._ensure_loaded()
         if self._model is None or self._tokenizer is None:
@@ -132,7 +136,7 @@ class PyTorchCodeAnalyzerModel:
         for domain, texts in DOMAIN_PROTOTYPES.items():
             matrix = self._prototype_matrix(f"domain:{domain}", texts)
             similarity = torch.matmul(candidate, matrix.T).max().item()
-            domain_scores[domain] = round((similarity + 1.0) / 2.0, 4)
+            domain_scores[domain] = self._clamp_score((similarity + 1.0) / 2.0)
 
         high_matrix = self._prototype_matrix("quality:high", QUALITY_ANCHORS["high"])
         low_matrix = self._prototype_matrix("quality:low", QUALITY_ANCHORS["low"])
@@ -142,7 +146,7 @@ class PyTorchCodeAnalyzerModel:
 
         return {
             "domain_scores": domain_scores,
-            "ml_quality_score": round(float(ml_quality_score), 4),
+            "ml_quality_score": self._clamp_score(float(ml_quality_score)),
             "backend_name": self.backend_name,
             "model_id": self.model_id,
             "notes": list(self.notes),

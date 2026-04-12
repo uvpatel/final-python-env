@@ -17,7 +17,7 @@ from utils import estimate_complexity, parse_code_structure
 def _lint_score(parsed: Dict[str, Any]) -> float:
     """Convert structural smells into a normalized lint-style score."""
 
-    score = 1.0
+    score = 0.99
     if not parsed.get("syntax_valid", True):
         score -= 0.45
     score -= min(parsed.get("long_lines", 0), 5) * 0.03
@@ -27,7 +27,7 @@ def _lint_score(parsed: Dict[str, Any]) -> float:
         score -= 0.05
     if parsed.get("docstring_ratio", 0.0) == 0.0 and parsed.get("function_names"):
         score -= 0.08
-    return round(max(0.0, min(1.0, score)), 4)
+    return round(max(0.01, min(0.99, score)), 4)
 
 
 class AnalysisService:
@@ -68,7 +68,7 @@ class AnalysisService:
             scores["ml_dl"] += 0.1
         if "while" in code or "for" in code:
             scores["dsa"] += 0.05
-        return {key: round(min(value, 0.99), 4) for key, value in scores.items()}
+        return {key: round(max(0.01, min(value, 0.99)), 4) for key, value in scores.items()}
 
     def analyze(self, request: AnalyzeCodeRequest) -> AnalyzeCodeResponse:
         """Run the complete multi-domain analysis pipeline."""

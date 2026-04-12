@@ -45,7 +45,7 @@ def analyze_data_science_code(code: str, parsed: Dict[str, Any], complexity: Dic
 
     return DomainAnalysis(
         domain="data_science",
-        domain_score=max(0.05, round(score, 4)),
+        domain_score=max(0.05, min(0.99, round(score, 4))),
         issues=issues,
         suggestions=suggestions,
         highlights={

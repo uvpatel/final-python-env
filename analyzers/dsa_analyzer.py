@@ -37,7 +37,7 @@ def analyze_dsa_code(code: str, parsed: Dict[str, Any], complexity: Dict[str, An
 
     return DomainAnalysis(
         domain="dsa",
-        domain_score=max(0.05, round(score, 4)),
+        domain_score=max(0.05, min(0.99, round(score, 4))),
         issues=issues,
         suggestions=suggestions,
         highlights={

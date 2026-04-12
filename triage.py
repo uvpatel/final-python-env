@@ -182,7 +182,7 @@ def _repair_risk(label: IssueLabel, confidence: float, signal_count: int) -> str
 
 
 def _clamp_unit(value: float) -> float:
-    return round(max(0.0, min(1.0, float(value))), 4)
+    return round(max(0.01, min(0.99, float(value))), 4)
 
 
 def _lint_score(code: str) -> float:
@@ -190,7 +190,7 @@ def _lint_score(code: str) -> float:
     if not stripped_lines:
         return 0.2
 
-    score = 1.0
+    score = 0.99
     if any(len(line) > 88 for line in stripped_lines):
         score -= 0.15
     if any(line.rstrip() != line for line in stripped_lines):
