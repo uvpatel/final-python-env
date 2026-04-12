@@ -8,6 +8,7 @@ version = "1.0.0"
 description = "TorchReview Copilot: AI-powered Python code triage with PyTorch and OpenEnv validation."
 readme = "README.md"
 requires-python = ">=3.10"
+
 dependencies = [
     "fastapi>=0.111.0",
     "gradio>=5.26.0",
@@ -30,22 +31,7 @@ server = "python_env.server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = [
-    "python_env",
-    "python_env.server",
-    "python_env.tasks",
-    "python_env.graders",
-    "python_env.api",
-    "python_env.app",
-    "python_env.app.agents",
-    "python_env.app.env",
-    "python_env.app.models",
-    "python_env.app.services",
-    "python_env.app.utils",
-    "python_env.analyzers",
-    "python_env.models",
-    "python_env.schemas",
-    "python_env.services",
-    "python_env.utils",
-]
-package-dir = { "python_env" = ".", "python_env.server" = "server", "python_env.tasks" = "tasks", "python_env.graders" = "graders", "python_env.api" = "api", "python_env.app" = "app", "python_env.app.agents" = "app/agents", "python_env.app.env" = "app/env", "python_env.app.models" = "app/models", "python_env.app.services" = "app/services", "python_env.app.utils" = "app/utils", "python_env.analyzers" = "analyzers", "python_env.models" = "models", "python_env.schemas" = "schemas", "python_env.services" = "services", "python_env.utils" = "utils" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
