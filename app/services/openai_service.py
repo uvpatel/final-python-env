@@ -20,11 +20,15 @@ class OpenAIActionPlanner:
 
     def __init__(self, config: InferenceConfig) -> None:
         self.config = config
-        self.client = OpenAI(base_url=config.api_base_url, api_key=config.hf_token) if config.hf_token else None
+        self.client = (
+            OpenAI(base_url=config.api_base_url, api_key=config.api_key, timeout=config.request_timeout_s)
+            if config.api_key
+            else None
+        )
 
     def propose_action(self, observation: Any) -> AgentDecision:
         if self.client is None:
-            return AgentDecision(action_type="run_tests", source="fallback", error="HF_TOKEN missing")
+            return AgentDecision(action_type="run_tests", source="fallback", error="API key missing")
 
         prompt = self._build_prompt(observation)
         for attempt in range(self.config.max_retries + 1):

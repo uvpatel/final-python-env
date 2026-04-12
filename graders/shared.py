@@ -23,6 +23,7 @@ STRICT_SCORE_MIN = 0.01
 STRICT_SCORE_MAX = 0.99
 POOR_SCORE = 0.1
 NEAR_PERFECT_SCORE = 0.95
+EPS = 1e-6
 
 
 def finite_float(value: Any, fallback: float = STRICT_SCORE_MIN) -> float:
@@ -44,22 +45,45 @@ def clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, numeric))
 
 
+def safe_score(score: Any) -> float:
+    """Clamp any score to the strict OpenEnv-safe open interval (0, 1)."""
+
+    bounded = max(EPS, min(1.0 - EPS, finite_float(score, fallback=EPS)))
+    assert 0 < bounded < 1, f"Score must be strictly between 0 and 1: {bounded}"
+    return bounded
+
+
+def normalize_score(x: Any) -> float:
+    """Sigmoid-normalize a raw score and clamp it safely into (0, 1)."""
+
+    numeric = finite_float(x, fallback=0.0)
+    bounded = max(-20.0, min(20.0, numeric))
+    return safe_score(1.0 / (1.0 + math.exp(-bounded)))
+
+
+def final_score_pipeline(raw_score: Any) -> float:
+    """Normalize arbitrary raw scoring signals into a strict OpenEnv-safe score."""
+
+    return normalize_score(raw_score)
+
+
 def strict_score(value: Any, lower: float = STRICT_SCORE_MIN, upper: float = STRICT_SCORE_MAX) -> float:
     """Clamp a score to the OpenEnv-safe open interval (0, 1)."""
 
     score = max(lower, min(upper, finite_float(value, fallback=lower)))
-    score = round(score, 3)
+    score = safe_score(score)
     assert 0 < score < 1, f"Invalid score: {score}"
     return score
 
 
 def shaped_score(progress: Any, floor: float = POOR_SCORE, ceiling: float = NEAR_PERFECT_SCORE) -> float:
-    """Map progress in [0, 1] to a shaped score band within (0, 1)."""
+    """Map progress in [0, 1] to a smooth score band within (0, 1)."""
 
     bounded_progress = clamp(finite_float(progress, fallback=0.0))
-    score = floor + (ceiling - floor) * bounded_progress
-    score = max(STRICT_SCORE_MIN, min(score, STRICT_SCORE_MAX))
-    score = round(score, 3)
+    centered_progress = (bounded_progress - 0.5) * 6.0
+    smoothed_progress = final_score_pipeline(centered_progress)
+    score = floor + (ceiling - floor) * smoothed_progress
+    score = safe_score(score)
     assert 0 < score < 1, f"Invalid score: {score}"
     return score
 
@@ -83,7 +107,56 @@ def safe_ratio(numerator: Any, denominator: Any) -> float:
 def component_score(value: Any) -> float:
     """Normalize component scores such as syntax, quality, and runtime."""
 
-    return strict_score(value)
+    bounded_value = clamp(finite_float(value, fallback=0.0))
+    return shaped_score(bounded_value, floor=0.02, ceiling=0.98)
+
+
+def composite_progress(
+    *,
+    correctness: Any = 0.0,
+    quality: Any = 0.0,
+    runtime: Any = 0.0,
+    syntax: Any = 0.0,
+    similarity: Any = 0.0,
+    baseline: float = 0.05,
+    penalty: Any = 0.0,
+) -> float:
+    """Blend multiple progress signals into a stable scalar progress estimate."""
+
+    progress = (
+        finite_float(baseline, fallback=0.05)
+        + 0.45 * clamp(correctness)
+        + 0.20 * clamp(quality)
+        + 0.15 * clamp(runtime)
+        + 0.15 * clamp(syntax)
+        + 0.05 * clamp(similarity)
+        - 0.20 * clamp(penalty)
+    )
+    return clamp(progress)
+
+
+def composite_grade_score(
+    *,
+    correctness: Any = 0.0,
+    quality: Any = 0.0,
+    runtime: Any = 0.0,
+    syntax: Any = 0.0,
+    similarity: Any = 0.0,
+    baseline: float = 0.05,
+    penalty: Any = 0.0,
+) -> float:
+    """Create a smooth task score from multiple bounded signals."""
+
+    progress = composite_progress(
+        correctness=correctness,
+        quality=quality,
+        runtime=runtime,
+        syntax=syntax,
+        similarity=similarity,
+        baseline=baseline,
+        penalty=penalty,
+    )
+    return shaped_score(progress)
 
 
 def compile_code(code: str) -> tuple[bool, str]:

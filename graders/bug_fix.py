@@ -12,10 +12,10 @@ except ImportError:
 from .shared import (
     base_grade,
     compile_code,
+    composite_grade_score,
     component_score,
     execute_cases,
     quality_metrics,
-    shaped_score,
     similarity_score,
     summarize_results,
 )
@@ -32,6 +32,7 @@ def grade_bug_fix_task(
 
     compiled, compile_error = compile_code(code)
     quality = quality_metrics(code, task.function_name)
+    similarity = similarity_score(code, task.reference_code)
     details = {
         "compile_error": compile_error,
         "quality_notes": quality["quality_notes"],
@@ -40,11 +41,18 @@ def grade_bug_fix_task(
     }
 
     if not compiled:
-        progress = 0.02 + 0.12 * similarity_score(code, task.reference_code)
         details["test_results"] = []
         details["test_summary"] = "Code does not compile."
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.0,
+                quality=0.05,
+                runtime=0.05,
+                syntax=0.0,
+                similarity=similarity,
+                baseline=0.04,
+                penalty=0.05,
+            ),
             syntax_score=component_score(0.01),
             tests_passed=0,
             tests_total=len(task.public_cases) + (len(task.hidden_cases) if include_hidden else 0),
@@ -59,9 +67,16 @@ def grade_bug_fix_task(
     if result.get("timed_out"):
         details["test_results"] = []
         details["test_summary"] = result["error"]
-        progress = 0.12 + 0.18 * quality["score"]
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.10,
+                quality=quality["score"],
+                runtime=0.0,
+                syntax=0.95,
+                similarity=similarity,
+                baseline=0.06,
+                penalty=0.12,
+            ),
             syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
@@ -73,9 +88,16 @@ def grade_bug_fix_task(
     if "error" in result:
         details["test_results"] = []
         details["test_summary"] = result["error"]
-        progress = 0.1 + 0.2 * quality["score"]
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.12,
+                quality=quality["score"],
+                runtime=0.0,
+                syntax=0.95,
+                similarity=similarity,
+                baseline=0.06,
+                penalty=0.08,
+            ),
             syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
@@ -89,9 +111,15 @@ def grade_bug_fix_task(
     pass_rate = data["passed"] / max(data["total"], 1)
     details["test_results"] = data["results"]
     details["test_summary"] = summarize_results("Test results", data["results"])
-    progress = min(1.0, 0.05 + 0.8 * pass_rate + 0.15 * quality["score"])
     return base_grade(
-        score=shaped_score(progress),
+        score=composite_grade_score(
+            correctness=pass_rate,
+            quality=quality["score"],
+            runtime=0.05,
+            syntax=0.95,
+            similarity=similarity,
+            baseline=0.08,
+        ),
         syntax_score=component_score(0.95),
         tests_passed=data["passed"],
         tests_total=data["total"],
