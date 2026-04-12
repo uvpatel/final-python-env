@@ -5,8 +5,10 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .pytorch_model import PyTorchCodeAnalyzerModel
+if TYPE_CHECKING:
+    from .pytorch_model import PyTorchCodeAnalyzerModel
 
 
 def _load_schema_module():
@@ -48,6 +50,14 @@ RewardDetails = _schema_models.RewardDetails
 TaskDescriptor = _schema_models.TaskDescriptor
 TaskGrade = _schema_models.TaskGrade
 TaskSummary = _schema_models.TaskSummary
+
+
+def __getattr__(name: str):
+    if name == "PyTorchCodeAnalyzerModel":
+        from .pytorch_model import PyTorchCodeAnalyzerModel as model_class
+
+        return model_class
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "HealthResponse",

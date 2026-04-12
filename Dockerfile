@@ -6,19 +6,27 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=utf-8 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     ENABLE_GRADIO_DEMO=false \
     ENABLE_WEB_INTERFACE=false
 
 WORKDIR /app
 
-COPY server/requirements.txt /tmp/requirements.txt
+COPY server/requirements.runtime.txt /tmp/requirements.runtime.txt
 
-RUN python -m pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY . /app
+RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    python -m pip install --upgrade pip setuptools && \
+    pip install -r /tmp/requirements.runtime.txt
+
+COPY --chown=appuser:appuser . /app
 
 RUN pip install --no-deps .
+
+USER appuser
 
 EXPOSE 8000
 

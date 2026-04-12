@@ -153,8 +153,9 @@ docker run --rm -p 8000:8000 ^
 
 Container behavior:
 
-- Base image: `python:3.11-slim`
+- Base image: `python:3.11-slim-bookworm`
 - Build context: project root
+- Runtime image installs the minimal API dependency set by default; Streamlit, PyTorch, and transformers stay out of the container, while Gradio is only used if the demo env flags are enabled.
 - Healthcheck: `GET /health`
 - Default entrypoint: `uvicorn server.app:app --host 0.0.0.0 --port 8000`
 
