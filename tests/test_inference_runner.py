@@ -56,6 +56,17 @@ class _FakeAgent:
         return AgentDecision(action_type="submit_solution")
 
 
+class _LowScoreEnv(_FakeEnv):
+    def step_result(self, action: object) -> tuple[_FakeObservation, float, bool, dict[str, object]]:
+        self._step += 1
+        return (
+            _FakeObservation("demo_task", 2, 0.60, True, current_code="candidate"),
+            0.60,
+            True,
+            {"last_action_error": None},
+        )
+
+
 def test_inference_runner_emits_strict_lines(capsys) -> None:
     runner = InferenceRunner(InferenceConfig.from_env())
     runner.agent = _FakeAgent()
@@ -69,3 +80,33 @@ def test_inference_runner_emits_strict_lines(capsys) -> None:
         "[STEP]  step=2 action=submit_solution reward=0.97 done=true error=null",
         "[END]   success=true steps=2 rewards=0.45,0.97",
     ]
+
+
+def test_inference_runner_marks_low_score_submission_unsuccessful(capsys) -> None:
+    runner = InferenceRunner(InferenceConfig.from_env())
+    runner.agent = _FakeAgent()
+    runner._create_env = lambda: _LowScoreEnv()  # type: ignore[method-assign]
+    runner.run_task("demo_task")
+
+    captured = capsys.readouterr().out.strip().splitlines()
+    assert captured[-1] == "[END]   success=false steps=1 rewards=0.60"
+
+
+def test_inference_config_prefers_openai_key_for_openai_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("API_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setenv("HF_TOKEN", "hf-key")
+
+    config = InferenceConfig.from_env()
+
+    assert config.api_key == "openai-key"
+
+
+def test_inference_config_prefers_hf_key_for_hf_router(monkeypatch) -> None:
+    monkeypatch.setenv("API_BASE_URL", "https://router.huggingface.co/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setenv("HF_TOKEN", "hf-key")
+
+    config = InferenceConfig.from_env()
+
+    assert config.api_key == "hf-key"

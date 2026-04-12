@@ -13,10 +13,10 @@ from .shared import (
     base_grade,
     benchmark_candidate,
     compile_code,
+    composite_grade_score,
     component_score,
     execute_cases,
     quality_metrics,
-    shaped_score,
     similarity_score,
     summarize_results,
 )
@@ -33,6 +33,7 @@ def grade_optimization_task(
 
     compiled, compile_error = compile_code(code)
     quality = quality_metrics(code, task.function_name)
+    similarity = similarity_score(code, task.reference_code)
     details = {
         "compile_error": compile_error,
         "quality_notes": quality["quality_notes"],
@@ -41,11 +42,18 @@ def grade_optimization_task(
     }
 
     if not compiled:
-        progress = 0.02 + 0.1 * similarity_score(code, task.reference_code)
         details["test_results"] = []
         details["test_summary"] = "Code does not compile."
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.0,
+                quality=0.05,
+                runtime=0.0,
+                syntax=0.0,
+                similarity=similarity,
+                baseline=0.04,
+                penalty=0.06,
+            ),
             syntax_score=component_score(0.01),
             tests_passed=0,
             tests_total=len(task.public_cases) + (len(task.hidden_cases) if include_hidden else 0),
@@ -60,9 +68,16 @@ def grade_optimization_task(
     if result.get("timed_out"):
         details["test_results"] = []
         details["test_summary"] = result["error"]
-        progress = 0.1 + 0.18 * quality["score"]
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.08,
+                quality=quality["score"],
+                runtime=0.0,
+                syntax=0.95,
+                similarity=similarity,
+                baseline=0.05,
+                penalty=0.14,
+            ),
             syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
@@ -74,9 +89,16 @@ def grade_optimization_task(
     if "error" in result:
         details["test_results"] = []
         details["test_summary"] = result["error"]
-        progress = 0.1 + 0.2 * quality["score"]
         return base_grade(
-            score=shaped_score(progress),
+            score=composite_grade_score(
+                correctness=0.10,
+                quality=quality["score"],
+                runtime=0.0,
+                syntax=0.95,
+                similarity=similarity,
+                baseline=0.05,
+                penalty=0.08,
+            ),
             syntax_score=component_score(0.95),
             tests_passed=0,
             tests_total=len(cases),
@@ -105,13 +127,16 @@ def grade_optimization_task(
     details["benchmark"] = benchmark_summary
 
     runtime_progress = 0.0 if benchmark_summary == "Benchmark deferred until hidden evaluation." else runtime_score
-    if include_hidden:
-        progress = min(1.0, 0.05 + 0.6 * pass_rate + 0.2 * quality["score"] + 0.15 * runtime_progress)
-    else:
-        progress = min(1.0, 0.05 + 0.7 * pass_rate + 0.25 * quality["score"])
-
     return base_grade(
-        score=shaped_score(progress),
+        score=composite_grade_score(
+            correctness=pass_rate,
+            quality=quality["score"],
+            runtime=runtime_progress if include_hidden else 0.10,
+            syntax=0.95,
+            similarity=similarity,
+            baseline=0.08 if include_hidden else 0.07,
+            penalty=0.10 if timed_out else 0.0,
+        ),
         syntax_score=component_score(0.95),
         tests_passed=data["passed"],
         tests_total=data["total"],

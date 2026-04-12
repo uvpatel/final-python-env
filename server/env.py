@@ -10,7 +10,7 @@ from openenv.core.env_server.types import EnvironmentMetadata
 
 try:
     from ..graders import grade_task
-    from ..graders.shared import component_score, safe_ratio, strict_score
+    from ..graders.shared import component_score, final_score_pipeline, safe_ratio, safe_score
     from ..models import (
         HistoryEntry,
         PythonCodeReviewAction,
@@ -22,7 +22,7 @@ try:
     from ..tasks import ReviewTask, list_tasks, select_task
 except ImportError:
     from graders import grade_task
-    from graders.shared import component_score, safe_ratio, strict_score
+    from graders.shared import component_score, final_score_pipeline, safe_ratio, safe_score
     from models import (
         HistoryEntry,
         PythonCodeReviewAction,
@@ -46,7 +46,7 @@ def _empty_grade() -> TaskGrade:
 
 
 def _reward_value(value: float) -> float:
-    return strict_score(value)
+    return final_score_pipeline(value)
 
 
 class PythonCodeReviewEnvironment(
@@ -300,36 +300,45 @@ class PythonCodeReviewEnvironment(
     ) -> RewardDetails:
         prev_score = previous_grade.score
         curr_score = current_grade.score
+        prev_syntax = previous_grade.syntax_score
+        curr_syntax = current_grade.syntax_score
+        prev_quality = previous_grade.quality_score
+        curr_quality = current_grade.quality_score
         prev_rate = safe_ratio(previous_grade.tests_passed, previous_grade.tests_total)
         curr_rate = safe_ratio(current_grade.tests_passed, current_grade.tests_total)
         prev_runtime = previous_grade.runtime_score
         curr_runtime = current_grade.runtime_score
-        prev_compile_error = bool(str(previous_grade.details.get("compile_error", "")).strip())
-        curr_compile_error = bool(str(current_grade.details.get("compile_error", "")).strip())
+        prev_compile_health = 0.1 if str(previous_grade.details.get("compile_error", "")).strip() else 0.95
+        curr_compile_health = 0.1 if str(current_grade.details.get("compile_error", "")).strip() else 0.95
 
-        syntax_reward = 0.14 if previous_grade.syntax_score < 0.9 and current_grade.syntax_score >= 0.9 else 0.0
-        test_reward = round(max(curr_rate - prev_rate, 0.0) * 0.28, 3)
-        progress_delta = round(max(curr_score - prev_score, 0.0) * 0.3, 3)
-        quality_bonus = round(max(current_grade.quality_score - previous_grade.quality_score, 0.0) * 0.12, 3)
-        runtime_bonus = round(max(curr_runtime - prev_runtime, 0.0) * 0.08, 3)
-        error_reduction_bonus = 0.1 if prev_compile_error and not curr_compile_error else 0.0
-        completion_bonus = 0.14 if final_submission and curr_rate >= 0.999 and curr_score >= 0.94 else 0.0
-        correctness_bonus = 0.12 if final_submission and curr_score >= 0.94 and prev_score < 0.94 else 0.0
+        syntax_reward = max(curr_syntax - prev_syntax, 0.0) * 0.18
+        test_reward = max(curr_rate - prev_rate, 0.0) * 0.22
+        progress_delta = max(curr_score - prev_score, 0.0) * 0.24
+        quality_bonus = max(curr_quality - prev_quality, 0.0) * 0.12
+        runtime_bonus = max(curr_runtime - prev_runtime, 0.0) * 0.10
+        error_reduction_bonus = max(curr_compile_health - prev_compile_health, 0.0) * 0.14
+        completion_bonus = (0.04 + 0.10 * curr_rate) * float(final_submission)
+        correctness_bonus = max(curr_score - 0.5, 0.0) * 0.12 * float(final_submission)
 
-        invalid_action_penalty = round((0.04 + (0.08 * (1.0 - prev_score))) if invalid_action else 0.0, 3)
-        timeout_penalty = round((0.06 + (0.08 * max(curr_runtime, prev_runtime))) if timed_out else 0.0, 3)
-        regression_penalty = round(max(prev_score - curr_score, 0.0) * 0.25, 3)
-        stagnation_penalty = round((0.02 + (0.05 * prev_score)) if action.action_type == "edit_code" and not code_changed else 0.0, 3)
+        invalid_action_penalty = (0.04 + (0.08 * (1.0 - prev_score))) if invalid_action else 0.0
+        timeout_penalty = (0.05 + (0.06 * max(curr_runtime, prev_runtime))) if timed_out else 0.0
+        regression_penalty = max(prev_score - curr_score, 0.0) * 0.24
+        stagnation_penalty = (0.02 + (0.04 * prev_score)) if action.action_type == "edit_code" and not code_changed else 0.0
 
         raw_value = (
-            0.32 * curr_score
+            2.0 * (curr_score - 0.5)
+            + 1.2 * (curr_rate - prev_rate)
+            + 0.8 * (curr_quality - prev_quality)
+            + 0.7 * (curr_runtime - prev_runtime)
+            + 0.9 * (curr_syntax - prev_syntax)
+            + 0.6 * (curr_compile_health - prev_compile_health)
             + syntax_reward
             + test_reward
             + progress_delta
             + quality_bonus
+            + runtime_bonus
             + error_reduction_bonus
             + completion_bonus
-            + runtime_bonus
             + correctness_bonus
             - invalid_action_penalty
             - timeout_penalty
@@ -367,22 +376,22 @@ class PythonCodeReviewEnvironment(
             reason_parts.append("no meaningful state change")
 
         return RewardDetails(
-            value=value,
-            syntax_reward=syntax_reward,
-            test_reward=test_reward,
-            correctness_bonus=correctness_bonus,
-            quality_bonus=quality_bonus,
-            error_reduction_bonus=error_reduction_bonus,
-            completion_bonus=completion_bonus,
-            runtime_bonus=runtime_bonus,
-            progress_delta=progress_delta,
-            invalid_action_penalty=invalid_action_penalty,
-            timeout_penalty=timeout_penalty,
-            regression_penalty=regression_penalty,
-            stagnation_penalty=stagnation_penalty,
+            value=safe_score(value),
+            syntax_reward=round(syntax_reward, 6),
+            test_reward=round(test_reward, 6),
+            correctness_bonus=round(correctness_bonus, 6),
+            quality_bonus=round(quality_bonus, 6),
+            error_reduction_bonus=round(error_reduction_bonus, 6),
+            completion_bonus=round(completion_bonus, 6),
+            runtime_bonus=round(runtime_bonus, 6),
+            progress_delta=round(progress_delta, 6),
+            invalid_action_penalty=round(invalid_action_penalty, 6),
+            timeout_penalty=round(timeout_penalty, 6),
+            regression_penalty=round(regression_penalty, 6),
+            stagnation_penalty=round(stagnation_penalty, 6),
             reason=", ".join(reason_parts),
-            prev_score=prev_score,
-            curr_score=curr_score,
+            prev_score=safe_score(prev_score),
+            curr_score=safe_score(curr_score),
             code_changed=code_changed,
         )
 

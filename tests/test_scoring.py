@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from graders import grade_task
+from graders.shared import component_score, final_score_pipeline, safe_score, shaped_score
 from models import PythonCodeReviewAction
 from server.env import PythonCodeReviewEnvironment
 from tasks import list_tasks
@@ -8,6 +9,16 @@ from tasks import list_tasks
 
 def assert_open_unit_interval(value: float) -> None:
     assert 0 < value < 1, f"Invalid score: {value}"
+
+
+def test_score_helpers_clamp_extremes_into_open_interval() -> None:
+    for value in (0.0, 1.0, -999999.0, 999999.0):
+        assert_open_unit_interval(safe_score(value))
+        assert_open_unit_interval(final_score_pipeline(value))
+
+    for progress in (0.0, 0.5, 1.0):
+        assert_open_unit_interval(shaped_score(progress))
+        assert_open_unit_interval(component_score(progress))
 
 
 def test_task_grades_stay_strictly_between_zero_and_one() -> None:
