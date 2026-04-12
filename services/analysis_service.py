@@ -34,7 +34,7 @@ class AnalysisService:
     """End-to-end analysis pipeline shared by API and UI."""
 
     def __init__(self) -> None:
-        self.model = PyTorchCodeAnalyzerModel()
+        self._model: PyTorchCodeAnalyzerModel | None = None
         self.reward_service = RewardService()
         self.suggestion_service = SuggestionService()
         self._analyzers: Dict[str, Callable[[str, Dict[str, Any], Dict[str, Any]], DomainAnalysis]] = {
@@ -43,6 +43,12 @@ class AnalysisService:
             "ml_dl": analyze_ml_code,
             "web": analyze_web_code,
         }
+
+    @property
+    def model(self) -> PyTorchCodeAnalyzerModel:
+        if self._model is None:
+            self._model = PyTorchCodeAnalyzerModel()
+        return self._model
 
     def _heuristic_domain_scores(self, parsed: Dict[str, Any], code: str) -> Dict[str, float]:
         """Derive domain priors from imports and syntax-level hints."""

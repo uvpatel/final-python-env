@@ -63,6 +63,7 @@ class PythonCodeReviewEnvironment(
         self._current_code: str = self._task.starter_code
         self._history: list[HistoryEntry] = []
         self._last_reward = RewardDetails(value=0.1, reason="Environment initialized.")
+        self._last_action_error: str | None = None
         self._current_grade = _empty_grade()
         self._state = PythonCodeReviewState(episode_id=str(uuid4()), step_count=0)
         self.reset()
@@ -77,8 +78,13 @@ class PythonCodeReviewEnvironment(
         self._task = select_task(seed=seed, task_id=task_id)
         self._current_code = self._task.starter_code
         self._history = []
+        self._last_action_error = None
         self._last_reward = RewardDetails(value=0.1, reason="Environment reset.")
-        self._current_grade = grade_task(self._task, self._current_code, include_hidden=False)
+        self._current_grade, self._last_action_error = self._safe_grade_task(
+            self._task,
+            self._current_code,
+            include_hidden=False,
+        )
 
         self._state = PythonCodeReviewState(
             episode_id=episode_id or str(uuid4()),
@@ -142,11 +148,13 @@ class PythonCodeReviewEnvironment(
         invalid_action = False
         code_changed = False
         use_hidden_grading = False
+        action_error: str | None = None
 
         if action.action_type == "edit_code":
             if not action.code or not action.code.strip():
                 invalid_action = True
                 status = "edit_code requires a non-empty code payload."
+                action_error = status
             else:
                 code_changed = action.code != self._current_code
                 self._current_code = action.code
@@ -164,18 +172,22 @@ class PythonCodeReviewEnvironment(
         else:  # pragma: no cover
             invalid_action = True
             status = f"Unsupported action_type: {action.action_type}"
+            action_error = status
 
         self._state.step_count += 1
 
         if invalid_action:
             current_grade = previous_grade
         else:
-            current_grade = grade_task(
+            current_grade, grade_error = self._safe_grade_task(
                 self._task,
                 self._current_code,
                 include_hidden=use_hidden_grading,
                 timeout_s=timeout_s or 3.0,
             )
+            if grade_error:
+                action_error = grade_error
+                status = f"{status} Grading fallback used."
             if action.action_type == "analyze_code":
                 status = self._analysis_status(current_grade)
             elif action.action_type == "run_tests":
@@ -208,6 +220,7 @@ class PythonCodeReviewEnvironment(
 
         self._current_grade = current_grade
         self._last_reward = reward_details
+        self._last_action_error = action_error
         attempts_remaining = max(self._task.max_steps - self._state.step_count, 0)
 
         self._state.task_id = self._task.task_id
@@ -226,7 +239,14 @@ class PythonCodeReviewEnvironment(
             status=status,
             reward_details=reward_details,
         )
-        return observation, reward_details.value, observation.done, {"task_id": observation.task_id, "score": observation.score}
+        return observation, reward_details.value, observation.done, {
+            "task_id": observation.task_id,
+            "score": observation.score,
+            "done": observation.done,
+            "attempts_remaining": observation.attempts_remaining,
+            "last_action_status": observation.last_action_status,
+            "last_action_error": observation.last_action_error,
+        }
 
     @property
     def state(self) -> PythonCodeReviewState:
@@ -252,11 +272,13 @@ class PythonCodeReviewEnvironment(
             history=list(self._history),
             attempts_remaining=self._state.attempts_remaining,
             last_action_status=status,
+            last_action_error=self._last_action_error,
             score=grade.score,
             reward=reward_details.value,
             done=self._state.done,
             reward_details=reward_details,
             metadata={
+                "benchmark": "python_code_review_env",
                 "goal": self._task.goal,
                 "repo_summary": self._task.repo_summary,
                 "changed_files": self._task.changed_files,
@@ -280,25 +302,34 @@ class PythonCodeReviewEnvironment(
         curr_score = current_grade.score
         prev_rate = safe_ratio(previous_grade.tests_passed, previous_grade.tests_total)
         curr_rate = safe_ratio(current_grade.tests_passed, current_grade.tests_total)
+        prev_runtime = previous_grade.runtime_score
+        curr_runtime = current_grade.runtime_score
+        prev_compile_error = bool(str(previous_grade.details.get("compile_error", "")).strip())
+        curr_compile_error = bool(str(current_grade.details.get("compile_error", "")).strip())
 
         syntax_reward = 0.14 if previous_grade.syntax_score < 0.9 and current_grade.syntax_score >= 0.9 else 0.0
-        test_reward = round(max(curr_rate - prev_rate, 0.0) * 0.22, 3)
-        progress_delta = round(max(curr_score - prev_score, 0.0) * 0.35, 3)
-        quality_bonus = round(max(current_grade.quality_score - previous_grade.quality_score, 0.0) * 0.08, 3)
+        test_reward = round(max(curr_rate - prev_rate, 0.0) * 0.28, 3)
+        progress_delta = round(max(curr_score - prev_score, 0.0) * 0.3, 3)
+        quality_bonus = round(max(current_grade.quality_score - previous_grade.quality_score, 0.0) * 0.12, 3)
+        runtime_bonus = round(max(curr_runtime - prev_runtime, 0.0) * 0.08, 3)
+        error_reduction_bonus = 0.1 if prev_compile_error and not curr_compile_error else 0.0
+        completion_bonus = 0.14 if final_submission and curr_rate >= 0.999 and curr_score >= 0.94 else 0.0
         correctness_bonus = 0.12 if final_submission and curr_score >= 0.94 and prev_score < 0.94 else 0.0
 
-        invalid_action_penalty = 0.12 if invalid_action else 0.0
-        timeout_penalty = 0.14 if timed_out else 0.0
-        regression_penalty = round(max(prev_score - curr_score, 0.0) * 0.2, 3)
-        stagnation_penalty = 0.06 if action.action_type == "edit_code" and not code_changed else 0.0
+        invalid_action_penalty = round((0.04 + (0.08 * (1.0 - prev_score))) if invalid_action else 0.0, 3)
+        timeout_penalty = round((0.06 + (0.08 * max(curr_runtime, prev_runtime))) if timed_out else 0.0, 3)
+        regression_penalty = round(max(prev_score - curr_score, 0.0) * 0.25, 3)
+        stagnation_penalty = round((0.02 + (0.05 * prev_score)) if action.action_type == "edit_code" and not code_changed else 0.0, 3)
 
         raw_value = (
-            0.1
-            + 0.45 * curr_score
+            0.32 * curr_score
             + syntax_reward
             + test_reward
             + progress_delta
             + quality_bonus
+            + error_reduction_bonus
+            + completion_bonus
+            + runtime_bonus
             + correctness_bonus
             - invalid_action_penalty
             - timeout_penalty
@@ -316,6 +347,12 @@ class PythonCodeReviewEnvironment(
             reason_parts.append("overall score improved")
         if quality_bonus:
             reason_parts.append("code quality improved")
+        if error_reduction_bonus:
+            reason_parts.append("errors removed")
+        if completion_bonus:
+            reason_parts.append("task completed")
+        if runtime_bonus:
+            reason_parts.append("runtime improved")
         if correctness_bonus:
             reason_parts.append("full correctness bonus")
         if invalid_action_penalty:
@@ -335,6 +372,9 @@ class PythonCodeReviewEnvironment(
             test_reward=test_reward,
             correctness_bonus=correctness_bonus,
             quality_bonus=quality_bonus,
+            error_reduction_bonus=error_reduction_bonus,
+            completion_bonus=completion_bonus,
+            runtime_bonus=runtime_bonus,
             progress_delta=progress_delta,
             invalid_action_penalty=invalid_action_penalty,
             timeout_penalty=timeout_penalty,
@@ -351,6 +391,22 @@ class PythonCodeReviewEnvironment(
         if compile_error:
             return compile_error
         return "Code parses successfully."
+
+    def _safe_grade_task(
+        self,
+        task: ReviewTask,
+        code: str,
+        *,
+        include_hidden: bool,
+        timeout_s: float = 3.0,
+    ) -> tuple[TaskGrade, str | None]:
+        try:
+            return (
+                grade_task(task, code, include_hidden=include_hidden, timeout_s=timeout_s),
+                None,
+            )
+        except Exception as exc:  # pragma: no cover
+            return _empty_grade(), f"{type(exc).__name__}: {exc}"
 
     def _format_test_results(self, grade: TaskGrade) -> str:
         parts = [grade.details.get("test_summary", "No test feedback available.")]

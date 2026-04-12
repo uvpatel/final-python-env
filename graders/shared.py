@@ -6,6 +6,7 @@ import ast
 import difflib
 import math
 import multiprocessing as mp
+import os
 import time
 import traceback
 from typing import Any, Callable, Dict, List
@@ -148,6 +149,28 @@ def run_with_timeout(
             "error": f"{message['error']}\n{message['traceback']}",
         }
     return {"timed_out": False, "data": message["data"]}
+
+
+def run_inline_with_timeout(
+    worker: Callable[[Dict[str, Any]], Dict[str, Any]],
+    payload: Dict[str, Any],
+    timeout_s: float,
+) -> Dict[str, Any]:
+    """Fallback execution path for platforms where spawned workers are unreliable."""
+
+    started = time.perf_counter()
+    try:
+        data = worker(payload)
+    except Exception as exc:
+        return {
+            "timed_out": False,
+            "error": f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=5)}",
+        }
+
+    elapsed = time.perf_counter() - started
+    if elapsed > timeout_s:
+        return {"timed_out": True, "error": f"Execution exceeded {timeout_s:.1f}s timeout."}
+    return {"timed_out": False, "data": data}
 
 
 def _execute_cases_worker(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -366,7 +389,10 @@ def benchmark_candidate(task: ReviewTask, code: str, timeout_s: float) -> Dict[s
         "events": events,
         "iterations": task.benchmark_config.get("iterations", 5),
     }
-    result = run_with_timeout(_benchmark_worker, payload, timeout_s=timeout_s)
+    if os.name == "nt":
+        result = run_inline_with_timeout(_benchmark_worker, payload, timeout_s=timeout_s)
+    else:
+        result = run_with_timeout(_benchmark_worker, payload, timeout_s=timeout_s)
     if result.get("timed_out"):
         return {"runtime_score": component_score(STRICT_SCORE_MIN), "timed_out": True, "details": result["error"]}
     if "error" in result:

@@ -1,6 +1,10 @@
-"""FastAPI + Gradio entrypoint for TorchReview Copilot."""
+"""OpenEnv FastAPI entrypoint with optional Gradio mounting."""
 
 from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI
 
 try:
     from openenv.core.env_server.http_server import create_app
@@ -17,11 +21,20 @@ except Exception:
 try:
     from ..openenv_models import PythonCodeReviewAction, PythonCodeReviewObservation
     from .env import PythonCodeReviewEnvironment
-    from .demo import build_demo
 except ImportError:
     from openenv_models import PythonCodeReviewAction, PythonCodeReviewObservation
     from server.env import PythonCodeReviewEnvironment
-    from server.demo import build_demo
+
+
+def _gradio_enabled() -> bool:
+    return str(os.getenv("ENABLE_GRADIO_DEMO", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _max_concurrent_envs() -> int:
+    try:
+        return max(int(os.getenv("OPENENV_MAX_CONCURRENT_ENVS", "2")), 1)
+    except Exception:
+        return 2
 
 
 def build_application():
@@ -32,11 +45,24 @@ def build_application():
         PythonCodeReviewAction,
         PythonCodeReviewObservation,
         env_name="python_code_review_env",
-        max_concurrent_envs=4,
+        max_concurrent_envs=_max_concurrent_envs(),
     )
-    if gr is None:
-        return api_app
-    return gr.mount_gradio_app(api_app, build_demo(), path="/")
+    served_app = api_app
+    if gr is not None and _gradio_enabled():
+        try:
+            from .demo import build_demo
+        except ImportError:
+            from server.demo import build_demo
+        served_app = gr.mount_gradio_app(api_app, build_demo(), path="/")
+
+    wrapper_app = FastAPI(title="python_code_review_env", version="1.0.0")
+
+    @wrapper_app.get("/health", include_in_schema=False)
+    def _health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    wrapper_app.mount("/", served_app)
+    return wrapper_app
 
 
 app = build_application()

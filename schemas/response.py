@@ -51,6 +51,9 @@ class ScoreBreakdown(BaseModel):
     domain_score: float = Field(..., ge=0.0, le=1.0)
     lint_score: float = Field(..., ge=0.0, le=1.0)
     complexity_penalty: float = Field(..., ge=0.0, le=1.0)
+    quality_signal: float = Field(..., ge=0.0, le=1.0)
+    error_reduction_signal: float = Field(..., ge=0.0, le=1.0)
+    completion_signal: float = Field(..., ge=0.0, le=1.0)
     reward: float = Field(..., ge=0.0, le=1.0)
 
 

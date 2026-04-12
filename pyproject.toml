@@ -13,7 +13,6 @@ dependencies = [
     "gradio>=5.26.0",
     "openai>=1.76.0",
     "openenv-core[core]>=0.2.2",
-    "pytest>=8.0.0",
     "streamlit>=1.44.0",
     "torch>=2.2.0",
     "transformers>=4.45.0",
@@ -22,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
 ]
 
@@ -37,10 +37,15 @@ packages = [
     "python_env.graders",
     "python_env.api",
     "python_env.app",
+    "python_env.app.agents",
+    "python_env.app.env",
+    "python_env.app.models",
+    "python_env.app.services",
+    "python_env.app.utils",
     "python_env.analyzers",
     "python_env.models",
     "python_env.schemas",
     "python_env.services",
     "python_env.utils",
 ]
-package-dir = { "python_env" = ".", "python_env.server" = "server", "python_env.tasks" = "tasks", "python_env.graders" = "graders", "python_env.api" = "api", "python_env.app" = "app", "python_env.analyzers" = "analyzers", "python_env.models" = "models", "python_env.schemas" = "schemas", "python_env.services" = "services", "python_env.utils" = "utils" }
+package-dir = { "python_env" = ".", "python_env.server" = "server", "python_env.tasks" = "tasks", "python_env.graders" = "graders", "python_env.api" = "api", "python_env.app" = "app", "python_env.app.agents" = "app/agents", "python_env.app.env" = "app/env", "python_env.app.models" = "app/models", "python_env.app.services" = "app/services", "python_env.app.utils" = "app/utils", "python_env.analyzers" = "analyzers", "python_env.models" = "models", "python_env.schemas" = "schemas", "python_env.services" = "services", "python_env.utils" = "utils" }

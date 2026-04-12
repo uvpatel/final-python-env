@@ -1,253 +1,169 @@
----
-title: TorchReview Copilot
-emoji: 🧠
-colorFrom: orange
-colorTo: red
-sdk: docker
-pinned: false
-app_port: 8000
-tags:
-  - pytorch
-  - gradio
-  - fastapi
-  - openenv
-  - code-review
----
+# OpenEnv Python Code Review Environment
 
-# TorchReview Copilot
+Production-ready hackathon submission for OpenEnv evaluation, deterministic validator runs, and Hugging Face Docker deployment.
 
-TorchReview Copilot is an **AI-powered code review and improvement system using PyTorch** to analyze Python code, predict quality, generate structured improvement suggestions, and compute an RL-ready reward score.
-
-It upgrades the original OpenEnv hackathon environment into a judge-friendly product demo: a polished Hugging Face Space on top, with the deterministic OpenEnv validation engine still preserved underneath.
-
-**Live demo:** [Hugging Face Space](https://huggingface.co/spaces/uvpatel7271/final-python-env)  
-**Repository:** [uvpatel/final-python-env](https://github.com/uvpatel/final-python-env)
-
-## Problem Statement
-
-Engineering teams lose time during incident response and code review because broken Python snippets often arrive with noisy traces, partial test output, and unclear ownership. Before fixing anything, someone still has to answer:
-
-- Is this a syntax issue, a logic bug, or a performance regression?
-- How risky is the repair?
-- What should be checked first?
-
-That triage step is repetitive, error-prone, and often slows down the actual fix.
-
-## Solution
-
-TorchReview Copilot turns code, traceback text, and a short context window into a practical code-review report:
-
-- **Issue classification:** syntax, logic, or performance
-- **ML quality score:** predicted code quality from PyTorch embeddings
-- **Reward score:** RL-ready score from model quality, lint quality, and complexity penalty
-- **Live Triage Radar:** confidence visualization for all issue classes
-- **Nearest known pattern:** the closest OpenEnv task match
-- **Improvement plan:** step 1 syntax/bug fixes, step 2 edge cases, step 3 scalability
-
-The result is a demo that feels like a real AI debugging assistant rather than a backend-only environment.
-
-## Why PyTorch Matters
-
-This project uses **PyTorch for real inference**, not placeholder branching:
-
-- `transformers` + `torch` load `huggingface/CodeBERTa-small-v1`
-- the model encodes code snippets and failure context into embeddings
-- embeddings are compared against curated OpenEnv issue prototypes
-- the final decision blends model similarity with lightweight static analysis signals
-
-That gives the demo an actual model-backed quality and issue scoring path while keeping it CPU-friendly for Hugging Face Spaces.
-
-## How It Works
-
-### Pipeline
-
-`Input code + context window + traceback -> static checks -> PyTorch embeddings -> quality + issue prediction -> suggestion engine -> reward computation -> UI/API output`
-
-### Detailed Flow
-
-1. The user pastes Python code and optional traceback or benchmark output.
-2. TorchReview extracts lightweight static signals:
-   - parser success/failure
-   - assertion-style test language
-   - lint/style issues
-   - nested-loop depth and complexity pressure
-3. CodeBERTa runs through PyTorch to embed the combined input.
-4. The embedding is compared against built-in issue prototypes derived from the OpenEnv task catalog and reference implementations.
-5. The UI returns:
-   - top issue label
-   - confidence radar
-   - repair risk
-   - ML quality score
-   - RL-ready reward score
-   - nearest known bug pattern
-   - three-step improvement plan
-
-### Reward Formula
-
-The current reward computation is:
+## Architecture
 
 ```text
-reward = (0.5 x ML_quality_score) + (0.3 x lint_score) - (0.2 x complexity_penalty)
+root
+├── inference.py                # Root validator entrypoint
+├── openenv.yaml                # OpenEnv manifest
+├── app/
+│   ├── agents/                # Action policy and fallback strategy
+│   ├── env/                   # RL loop runner and stdout contract
+│   ├── models/                # Inference dataclasses/config
+│   ├── services/              # OpenAI client wrapper with retries
+│   └── utils/                 # Formatting, task loading, log suppression
+├── server/
+│   ├── env.py                 # OpenEnv environment and reward shaping
+│   ├── app.py                 # FastAPI/OpenEnv app, optional Gradio mount
+│   └── Dockerfile             # Hugging Face Docker image
+├── graders/                   # Syntax, bug-fix, optimization graders
+├── tasks/                     # Deterministic benchmark tasks and references
+├── services/                  # Multi-domain analysis services
+├── analyzers/                 # Domain-specific analyzers
+├── models/                    # Lazy-loaded PyTorch scoring model
+├── schemas/                   # API request/response contracts
+└── tests/                     # Local validation coverage
 ```
 
-This keeps the project compatible with OpenEnv-style reinforcement learning workflows.
+Runtime flow:
 
-## Built-In Demo Scenarios
-
-The app ships with three grounded examples reused from the OpenEnv tasks:
-
-1. **Syntax regression:** broken invoice normalization helper
-2. **Logic bug:** session window boundary failure
-3. **Performance bottleneck:** slow active-user ranking pipeline
-
-These examples make the classification differences obvious during judging and video demos.
-
-## Tech Stack
-
-- **PyTorch** for embedding inference
-- **Transformers** for `CodeBERTa-small-v1`
-- **Gradio** for the polished Hugging Face Space UI
-- **FastAPI** for the app server
-- **OpenEnv** for deterministic validation endpoints and environment compatibility
-- **Pydantic** for typed schemas
-
-## Features
-
-- PyTorch-powered code quality inference
-- Static analysis for syntax, lint, and complexity
-- Context-window-aware review flow
-- RL-ready reward shaping
-- Live Triage Radar visualization
-- Three-step improvement plan:
-  1. syntax checking and bug fixes
-  2. edge-case handling
-  3. scalability improvements
-
-## Hugging Face Space UX
-
-The root app now presents a production-style triage experience:
-
-- a clear problem/solution hero section
-- example scenario selector
-- code and traceback inputs
-- context window input
-- **Live Triage Radar**
-- structured improvement plan
-- reward and quality score display
-- visible model/backend notes
-
-The underlying OpenEnv endpoints remain available for compatibility and evaluation.
-
-## Screenshots
-
-Add screenshots after deployment:
-
-- `docs/screenshots/home.png` -> hero + inputs
-- `docs/screenshots/triage-radar.png` -> confidence visualization
-- `docs/screenshots/fix-plan.png` -> structured output panel
-
-Suggested markdown once captured:
-
-```md
-![TorchReview Copilot Home](docs/screenshots/home.png)
-![Live Triage Radar](docs/screenshots/triage-radar.png)
-![Fix Plan Output](docs/screenshots/fix-plan.png)
+```text
+inference.py
+  -> app.env.runner.InferenceRunner
+  -> env.reset(task_id=...)
+  -> ReviewAgent(action planning)
+  -> env.step_result(action)
+  -> strict [START]/[STEP]/[END] output
 ```
+
+## What Was Fixed
+
+- `inference.py` now lives at the repo root and delegates to a strict runner under `app/env`.
+- OpenAI usage is limited to the official Python client:
+  `client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)`.
+- Defaulted env vars are enforced for `API_BASE_URL` and `MODEL_NAME`; `HF_TOKEN` is read without a default and handled explicitly.
+- Output now matches the required single-line contract exactly and always emits `[END]`, including failure paths.
+- The RL loop now uses `reset()` plus `step_result()` in a proper `while not done` loop.
+- Step errors now surface through `last_action_error` and are printed in `[STEP]`.
+- Reward shaping is now dynamic in the OpenEnv environment:
+  code quality, test progress, runtime progress, error removal, regressions, and completion are all part of the reward.
+- The API-side reward service is no longer a static weighted sum and now exposes quality, error-reduction, and completion signals.
+- The Docker image now builds from the repo root, caches dependency installation more effectively, and runs `server.app:app` directly on port `8000`.
+- Server startup is lighter:
+  the PyTorch analyzer is lazy-loaded and the Gradio demo is disabled by default.
 
 ## Local Setup
 
-### 1. Install dependencies
+Install dev dependencies:
 
 ```bash
-pip install .
+pip install -e .[dev]
 ```
 
-### 2. Run the application
+Run the test suite:
 
 ```bash
-uvicorn server.app:app --host 0.0.0.0 --port 8000
+pytest -q
 ```
 
-### 3. Open the demo
+Run the OpenEnv server locally:
 
-Visit:
+```bash
+python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+```
+
+Optional demo UI:
+
+```bash
+set ENABLE_GRADIO_DEMO=true
+python -m uvicorn server.app:app --host 0.0.0.0 --port 8000
+```
+
+## Inference Contract
+
+Required environment variables:
+
+- `API_BASE_URL`
+  Default: `https://router.huggingface.co/v1`
+- `MODEL_NAME`
+  Default: `Qwen/Qwen2.5-3B-Instruct`
+- `HF_TOKEN`
+  Mandatory, no default is injected
+
+Example:
+
+```bash
+set API_BASE_URL=https://router.huggingface.co/v1
+set MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
+set HF_TOKEN=hf_xxx
+python inference.py
+```
+
+Expected stdout shape:
 
 ```text
-http://localhost:8000/
-```
-
-### 4. Verify OpenEnv compatibility
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/state
+[START] task=syntax_fix_invoice_totals env=python_code_review_env model=Qwen/Qwen2.5-3B-Instruct
+[STEP]  step=1 action=run_tests reward=0.12 done=false error=null
+[STEP]  step=2 action=edit_code reward=0.96 done=false error=null
+[STEP]  step=3 action=run_tests reward=0.99 done=false error=null
+[STEP]  step=4 action=submit_solution reward=0.99 done=true error=null
+[END]   success=true steps=4 rewards=0.12,0.96,0.99,0.99
 ```
 
 ## Docker
 
-```bash
-docker build -t torchreview-copilot -f server/Dockerfile .
-docker run --rm -p 8000:8000 torchreview-copilot
-```
-
-Expected checks:
+Build from the project root:
 
 ```bash
-curl http://localhost:8000/
-curl http://localhost:8000/health
+docker build -f server/Dockerfile .
 ```
 
-## Project Structure
+Run locally:
 
-```text
-python_env/
-├── client.py
-├── graders/
-├── server/
-│   ├── app.py
-│   ├── demo.py
-│   └── env.py
-├── tasks/
-├── triage.py
-├── triage_catalog.py
-├── triage_models.py
-├── inference.py
-└── tests/
+```bash
+docker run --rm -p 8000:8000 ^
+  -e API_BASE_URL=https://router.huggingface.co/v1 ^
+  -e MODEL_NAME=Qwen/Qwen2.5-3B-Instruct ^
+  -e HF_TOKEN=hf_xxx ^
+  openenv-python-code-review-env
 ```
 
-## OpenEnv Compatibility
+Container behavior:
 
-The hackathon backend is still present:
+- Base image: `python:3.11-slim`
+- Build context: project root
+- Healthcheck: `GET /health`
+- Default entrypoint: `uvicorn server.app:app --host 0.0.0.0 --port 8000`
 
-- deterministic task grading
-- structured action/observation/state models
-- `/health`, `/state`, `/reset`, `/step`, and related environment routes
+## Hugging Face Spaces
 
-This means the product demo is not detached from evaluation; it is layered on top of the original OpenEnv system.
+Recommended deployment steps:
 
-## Demo Script
+1. Create a Docker Space.
+2. Push this repository as-is.
+3. Let Spaces build with `server/Dockerfile`.
+4. Set Space secrets:
+   `HF_TOKEN`
+5. Set Space variables as needed:
+   `API_BASE_URL`, `MODEL_NAME`, `ENABLE_GRADIO_DEMO=false`
+6. Confirm the app listens on port `8000`.
+7. Smoke-test:
+   `/health`
+   `/reset`
+   `/step`
 
-See [DEMO_SCRIPT.md](DEMO_SCRIPT.md) for the 60-90 second recording flow.
+## Performance Notes
 
-Short version:
+- Max concurrent environments default to `2`, aligned with a `2 vCPU / 8 GB RAM` target.
+- The analyzer model is lazy-loaded instead of being created at startup.
+- The inference runner relies on short prompts, low token budgets, and limited retries.
+- The policy uses deterministic reference-code fallback instead of expensive iterative code generation.
+- Public validation is preferred before final submission to avoid wasted hidden-eval steps.
 
-1. Open the Space and introduce the problem.
-2. Load the syntax example.
-3. Show the Live Triage Radar and issue label.
-4. Explain the PyTorch embedding step.
-5. Show the matched pattern and fix plan.
-6. Show the reward score and explain how it can be used inside an RL environment.
-7. Switch to the performance example to prove the model distinguishes issue classes.
+## Known Limitations
 
-## Limitations
-
-- The classifier uses pretrained embeddings plus prototype similarity, not a custom fine-tuned model.
-- First model load may take longer on a cold Hugging Face Space.
-- The current demo focuses on short Python snippets rather than full multi-file repositories.
-
-## Future Work
-
-- fine-tune the PyTorch classifier on a larger bug triage dataset
-- add repository-level file context and diff-aware analysis
-- include automated patch suggestions after triage
-- track remediation outcomes as a feedback loop for future ranking improvements
+- If `HF_TOKEN` is absent, inference still completes with deterministic fallback actions, but LLM guidance is skipped.
+- The benchmark tasks are deterministic and intentionally small; this is good for validator stability but not a full training benchmark.
+- Gradio remains optional and is disabled by default to keep deployment lighter.
