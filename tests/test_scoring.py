@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from graders import grade_task
-from openenv_models import PythonCodeReviewAction
+from models import PythonCodeReviewAction
 from server.env import PythonCodeReviewEnvironment
 from tasks import list_tasks
 

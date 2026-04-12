@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 try:
-    from ..openenv_models import TaskGrade
+    from ..models import TaskGrade
     from ..tasks.catalog import ReviewTask
 except ImportError:
-    from openenv_models import TaskGrade
+    from models import TaskGrade
     from tasks.catalog import ReviewTask
 
 from .shared import (

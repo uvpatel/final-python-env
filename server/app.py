@@ -19,10 +19,10 @@ except Exception:
     gr = None  # type: ignore[assignment]
 
 try:
-    from ..openenv_models import PythonCodeReviewAction, PythonCodeReviewObservation
+    from ..models import PythonCodeReviewAction, PythonCodeReviewObservation
     from .env import PythonCodeReviewEnvironment
 except ImportError:
-    from openenv_models import PythonCodeReviewAction, PythonCodeReviewObservation
+    from models import PythonCodeReviewAction, PythonCodeReviewObservation
     from server.env import PythonCodeReviewEnvironment
 
 

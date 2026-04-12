@@ -7,7 +7,7 @@ from typing import Dict
 from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 
-from .openenv_models import (
+from .models import (
     PythonCodeReviewAction,
     PythonCodeReviewObservation,
     PythonCodeReviewState,
