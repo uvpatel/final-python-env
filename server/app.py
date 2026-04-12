@@ -53,10 +53,16 @@ def build_application():
     served_app = api_app
     if gr is not None and _gradio_enabled():
         try:
-            from .demo import build_demo
+            from .demo import CSS, build_demo
         except ImportError:
-            from server.demo import build_demo
-        served_app = gr.mount_gradio_app(api_app, build_demo(), path="/")
+            from server.demo import CSS, build_demo
+        served_app = gr.mount_gradio_app(
+            api_app,
+            build_demo(),
+            path="/",
+            theme=gr.themes.Soft(primary_hue="orange", secondary_hue="amber"),
+            css=CSS,
+        )
 
     wrapper_app = FastAPI(title="python_code_review_env", version="1.0.0")
 
@@ -74,7 +80,7 @@ app = build_application()
 def main(host: str = "0.0.0.0", port: int = 8000) -> None:
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, access_log=False)
 
 
 if __name__ == "__main__":

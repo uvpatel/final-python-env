@@ -347,7 +347,7 @@ def build_demo() -> gr.Blocks:
     examples = get_default_engine().example_map()
     first_example = next(iter(examples.values()))
 
-    with gr.Blocks(theme=gr.themes.Soft(primary_hue="orange", secondary_hue="amber"), css=CSS, title="TorchReview Copilot") as demo:
+    with gr.Blocks(title="TorchReview Copilot") as demo:
         gr.HTML(
             """
             <div class="hero-card">
