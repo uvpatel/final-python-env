@@ -1,6 +1,7 @@
 **
 !.dockerignore
 !README.md
+!Dockerfile
 !__init__.py
 !client.py
 !compat.py
@@ -21,6 +22,8 @@
 !analyzers/**
 !models/
 !models/**
+!outputs/
+!outputs/**
 !schemas/
 !schemas/**
 !server/
